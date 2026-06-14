@@ -1,9 +1,11 @@
 # Server unit suite — Fastify API (@devdigest/api), hermetic tests only.
 #
 # Two jobs:
-#  - typecheck: matrix over Linux + Windows. The `pnpm install` here is also the
-#    real gate for `@ast-grep/napi`'s Windows prebuilt (no node-gyp on the
-#    runner) — it absorbs the old server-build.yml's purpose.
+#  - typecheck: type-check on Linux only — the platform CI and the exported
+#    agent-runner both run on. We deliberately do NOT matrix over Windows/macOS:
+#    macOS is covered by daily local dev, Windows is not a ship target, and
+#    `@ast-grep/napi` is exact-pinned so its native binary only changes on a
+#    deliberate version bump.
 #  - unit: the ~19 DB-free test files (everything that is NOT `*.it.test.ts`).
 #    LLM/git/embeddings are mocked via src/adapters/mocks.ts — no Docker.
 #
@@ -33,12 +35,7 @@ concurrency:
 
 jobs:
   typecheck:
-    name: typecheck (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: server
@@ -55,8 +52,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: server/pnpm-lock.yaml
 
-      # Also the @ast-grep/napi prebuilt gate (win32-x64): a missing prebuilt
-      # fails install here, with no node-gyp fallback configured.
       - run: pnpm install --frozen-lockfile
 
       # The server type-checks reviewer-core's RAW source: tsconfig aliases
