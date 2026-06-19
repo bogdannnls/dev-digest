@@ -42,7 +42,11 @@ export interface PrRowView {
   size: "S" | "M" | "L";
   sizeLines: string;
   score: number;
-  findings: { CRITICAL: number; WARNING: number; SUGGESTION: number };
+  findings: {
+    CRITICAL:   { count: number; titles: Array<{ id: string; title: string }> };
+    WARNING:    { count: number; titles: Array<{ id: string; title: string }> };
+    SUGGESTION: { count: number; titles: Array<{ id: string; title: string }> };
+  };
   status: "needs_review" | "reviewed" | "stale";
   updated: string;
 }
