@@ -111,10 +111,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. We also capture reviewId here so the findings query
-    // below can join from it without a second "latest review" lookup.
+    // Latest-review score AND per-severity findings (counts + top-5 titles).
+    // Both keyed off the same `latestReviewIds` so they stay consistent — if
+    // "latest review" semantics ever change, change them in both places.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null; reviewId: string }>();
     if (prIds.length > 0) {
@@ -174,6 +173,36 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           const bucket = findingsByPr.get(row.prId) ?? emptyFindings();
           bucket[sev].count = row.count;
           findingsByPr.set(row.prId, bucket);
+        }
+
+        // Top 5 titles per (pr_id, severity) by confidence DESC. Drizzle's raw
+        // SQL is required for the window function — kept inline and short.
+        const titleRows = await container.db.execute<{
+          pr_id: string;
+          severity: string;
+          id: string;
+          title: string;
+        }>(sql`
+          SELECT pr_id, severity, id, title FROM (
+            SELECT r.pr_id, f.severity, f.id, f.title,
+              ROW_NUMBER() OVER (
+                PARTITION BY r.pr_id, f.severity
+                ORDER BY f.confidence DESC, f.id ASC
+              ) AS rn
+            FROM findings f
+            JOIN reviews r ON r.id = f.review_id
+            WHERE r.id IN ${latestReviewIds}
+              AND f.dismissed_at IS NULL
+          ) ranked
+          WHERE rn <= 5
+        `);
+
+        for (const row of titleRows) {
+          const sev = row.severity as SevKey;
+          if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+          const bucket = findingsByPr.get(row.pr_id) ?? emptyFindings();
+          bucket[sev].titles.push({ id: row.id, title: row.title });
+          findingsByPr.set(row.pr_id, bucket);
         }
       }
     }

@@ -135,6 +135,56 @@ d('GET /repos/:id/pulls — findings counts', () => {
     // PR B intentionally gets NO review rows → all counts should be 0.
   });
 
+  it('returns top 5 titles per severity ordered by confidence DESC', async () => {
+    const cfg = loadConfig({ DATABASE_URL: pg.url, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+
+    // Add 7 CRITICAL findings to PR A's review with known confidence values so
+    // that we can assert the top-5 are returned in confidence DESC order.
+    // The beforeEach review already has 2 CRITICAL (conf 0.99, 0.95) + 1 WARNING.
+    // We insert a fresh review to keep this test self-contained.
+    const [reviewExtra] = await pg.handle.db
+      .insert(t.reviews)
+      .values({ workspaceId, prId: prAId, kind: 'review', score: 80, model: 'test' })
+      .returning();
+
+    // Wait 1 ms so createdAt differs and this review is NOT the latest.
+    // We want the beforeEach review to remain "latest" — actually we want THIS
+    // review to be latest (newest). We insert it after beforeEach, so it will be
+    // newer → it IS the latest review for prAId. We seed exactly 7 CRITICAL findings.
+    await pg.handle.db.insert(t.findings).values([
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 1, endLine: 1, severity: 'CRITICAL', category: 'sec', title: 'T01', rationale: 'r', confidence: 0.1, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 2, endLine: 2, severity: 'CRITICAL', category: 'sec', title: 'T02', rationale: 'r', confidence: 0.2, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 3, endLine: 3, severity: 'CRITICAL', category: 'sec', title: 'T03', rationale: 'r', confidence: 0.3, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 4, endLine: 4, severity: 'CRITICAL', category: 'sec', title: 'T04', rationale: 'r', confidence: 0.4, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 5, endLine: 5, severity: 'CRITICAL', category: 'sec', title: 'T05', rationale: 'r', confidence: 0.5, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 6, endLine: 6, severity: 'CRITICAL', category: 'sec', title: 'T06', rationale: 'r', confidence: 0.6, kind: 'finding' },
+      { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 7, endLine: 7, severity: 'CRITICAL', category: 'sec', title: 'T07', rationale: 'r', confidence: 0.7, kind: 'finding' },
+    ]);
+
+    const app = await buildApp({
+      config: cfg,
+      db: pg.handle.db,
+      overrides: {
+        github: new MockGitHubClient({ pulls: [] }),
+        git: new MockGitClient(),
+      },
+    });
+
+    try {
+      const res = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Array<{ id: string; findings: any }>;
+      const a = body.find((p) => p.id === prAId)!;
+      expect(a, 'PR A should be in the list').toBeDefined();
+      expect(a.findings.CRITICAL.titles).toHaveLength(5);
+      expect(a.findings.CRITICAL.titles.map((t: any) => t.title)).toEqual([
+        'T07', 'T06', 'T05', 'T04', 'T03', // confidence DESC (0.7 → 0.3)
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('returns severity-bucketed counts per PR from the latest review', async () => {
     const cfg = loadConfig({ DATABASE_URL: pg.url, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     const app = await buildApp({
