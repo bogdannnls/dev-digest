@@ -19,19 +19,22 @@
 - "Latest review" = latest `reviews` row with `kind = 'review'` per `pr_id`, ordered by `created_at DESC` — matches the existing SCORE query in the same handler.
 - Top titles ordering: `confidence DESC`, limit 5 per (pr_id, severity).
 - Commit messages: english, single-quoted via `git commit -m '...'` (per repo CLAUDE.md).
+- `findings` is a REQUIRED field on `PrMeta` (per pre-flight resolution). The same enrichment runs on BOTH `GET /repos/:id/pulls` (list) and `GET /pulls/:id` (detail, via `PrDetail = PrMeta.extend(...)`). Adapters that return `PrMeta[]` (Octokit, Mock) fill in empty buckets `{ count: 0, titles: [] }` since they don't have DB access — actual findings are layered on by the route handlers downstream.
 
 ---
 
-### Task 1: Extend `PrMeta` Zod schema with `findings`
+### Task 1: Extend `PrMeta` Zod schema with `findings` + adapter shims
 
 **Files:**
 - Modify: `server/src/vendor/shared/contracts/platform.ts:157-174` (also mirrored in `client/src/vendor/shared/contracts/platform.ts` — both files are kept in sync by vendoring; edit both).
+- Modify: `server/src/adapters/github/octokit.ts` (the `listPullRequests` method around line 36) — populate empty findings buckets on each returned PR.
+- Modify: `server/src/adapters/mocks.ts` (the `MockGitHubClient.listPullRequests` method around line 138) — same empty-buckets population.
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `PrMeta.findings` field shape — `{ CRITICAL: SeverityBucket, WARNING: SeverityBucket, SUGGESTION: SeverityBucket }` where `SeverityBucket = { count: number; titles: Array<{ id: string; title: string }> }`. Both `PrMeta` (Zod) and the inferred TypeScript type are exported. The field is required (always present in the response), but each bucket may have `count: 0` and `titles: []`.
+- Produces: `PrMeta.findings` field shape — `{ CRITICAL: SeverityBucket, WARNING: SeverityBucket, SUGGESTION: SeverityBucket }` where `SeverityBucket = { count: number; titles: Array<{ id: string; title: string }> }`. Both `PrMeta` (Zod) and the inferred TypeScript type are exported. The field is required; producers without DB access (the GH adapters) return empty buckets that route handlers overwrite. A shared helper `emptyFindingsBuckets()` (in the same `contracts/platform.ts` file, exported) returns the zero-state object so adapters and route handlers don't drift.
 
-- [ ] **Step 1: Add the SeverityBucket sub-schema and extend `PrMeta`** in `server/src/vendor/shared/contracts/platform.ts`
+- [ ] **Step 1: Add the SeverityBucket sub-schema, the `emptyFindingsBuckets()` helper, and extend `PrMeta`** in `server/src/vendor/shared/contracts/platform.ts`
 
 ```typescript
 // Insert just above the existing `export const PrMeta = z.object({` at line 157.
@@ -44,6 +47,17 @@ const SeverityBucket = z.object({
   titles: z.array(FindingTitle),
 });
 
+/**
+ * Zero-state findings shape used by producers that don't have findings data
+ * (e.g., GitHub adapters returning raw PR metadata). Route handlers overwrite
+ * with real data when present.
+ */
+export const emptyFindingsBuckets = () => ({
+  CRITICAL: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+  WARNING: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+  SUGGESTION: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+});
+
 // Inside PrMeta object, immediately after `score: z.number().int().nullish(),`:
 findings: z.object({
   CRITICAL: SeverityBucket,
@@ -54,16 +68,32 @@ findings: z.object({
 
 - [ ] **Step 2: Mirror the same edit in `client/src/vendor/shared/contracts/platform.ts`** so the vendored copies stay in sync. The two files are kept identical by design.
 
-- [ ] **Step 3: Run server typecheck to confirm the schema is well-formed**
+- [ ] **Step 3: Update `server/src/adapters/github/octokit.ts` `listPullRequests`** so each returned PR carries empty buckets. Around line 36, where the method maps GitHub PR rows to `PrMeta`, add `findings: emptyFindingsBuckets()` to the object literal. Import the helper from `@devdigest/shared`.
 
-Run: `pnpm -C server typecheck`
-Expected: no errors. (Some callers may now show type errors where they construct `PrMeta` literals — that's expected and gets fixed in Task 2.)
+- [ ] **Step 4: Update `server/src/adapters/mocks.ts` `MockGitHubClient.listPullRequests`** the same way — every returned PR gets `findings: emptyFindingsBuckets()`. Import from `@devdigest/shared`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Update the list-endpoint return at `server/src/modules/pulls/routes.ts:135`** to also include `findings: emptyFindingsBuckets()` for now — Task 2 will replace this with real values. This keeps the route's `Promise<PrMeta[]>` return type valid between tasks.
+
+- [ ] **Step 6: Update the detail-endpoint return at `server/src/modules/pulls/routes.ts:160`** (the `GET /pulls/:id` handler returning `PrDetail`) to include `findings: emptyFindingsBuckets()`. Task 3.5 will replace this with real values.
+
+- [ ] **Step 7: Run server typecheck + existing server tests**
+
+Run: `pnpm -C server typecheck && pnpm -C server test`
+Expected: clean typecheck, all existing tests still passing (the empty buckets satisfy the new schema; behavior unchanged).
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add server/src/vendor/shared/contracts/platform.ts client/src/vendor/shared/contracts/platform.ts
-git commit -m 'feat(shared): extend PrMeta with per-severity findings buckets'
+git add server/src/vendor/shared/contracts/platform.ts \
+  client/src/vendor/shared/contracts/platform.ts \
+  server/src/adapters/github/octokit.ts \
+  server/src/adapters/mocks.ts \
+  server/src/modules/pulls/routes.ts
+git commit -m 'feat(shared): extend PrMeta with per-severity findings buckets
+
+Adds the findings field (required) and an emptyFindingsBuckets() helper.
+Adapters and route handlers populate empty buckets for now; subsequent
+tasks layer in real counts and titles.'
 ```
 
 ---
@@ -352,6 +382,158 @@ git commit -m 'feat(pulls): top-5 finding titles per severity on PR list
 Adds a window-function query that surfaces the highest-confidence findings
 per severity bucket. Drops the now-stale comment that said findings were
 intentionally not on the list.'
+```
+
+---
+
+### Task 3.5: Backend — wire findings into the detail endpoint `GET /pulls/:id`
+
+**Files:**
+- Modify: `server/src/modules/pulls/routes.ts` — the `GET /pulls/:id` handler around line 160. Reuse the same per-severity counts query and top-5 titles window-function query from Tasks 2-3, scoped to a single `pr_id`.
+- Modify: `server/test/pulls-list-findings.it.test.ts` — append a test for the detail endpoint.
+
+**Interfaces:**
+- Consumes: `emptyFindingsBuckets()` helper (Task 1) and the query patterns from Tasks 2-3.
+- Produces: `GET /pulls/:id` now returns real per-severity counts + top-5 titles, computed from the same "latest review" definition as the list endpoint. Same filters apply (`dismissed_at IS NULL`).
+
+- [ ] **Step 1: Write the failing test** (append to `server/test/pulls-list-findings.it.test.ts`)
+
+```typescript
+it('GET /pulls/:id returns findings on the detail response', async () => {
+  // Seed PR A with 2 CRITICAL (titles 'detail-T1' confidence 0.9,
+  // 'detail-T2' confidence 0.7) and 0 of others. prAId reused from
+  // beforeEach.
+  const res = await app.inject({ method: 'GET', url: `/pulls/${prAId}` });
+  expect(res.statusCode).toBe(200);
+  const body = res.json() as { findings: any };
+  expect(body.findings.CRITICAL.count).toBe(2);
+  expect(body.findings.CRITICAL.titles.map((t: any) => t.title)).toEqual([
+    'detail-T1', 'detail-T2',
+  ]);
+  expect(body.findings.WARNING.count).toBe(0);
+  expect(body.findings.SUGGESTION.count).toBe(0);
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm -C server exec vitest run pulls-list-findings.it`
+Expected: FAIL — counts are 0 / titles are [] because the detail endpoint still returns `emptyFindingsBuckets()` from Task 1.
+
+- [ ] **Step 3: Extract a reusable helper** at the top of `server/src/modules/pulls/routes.ts` (above the route registrations):
+
+```typescript
+/**
+ * Compute per-severity findings (counts + top-5 titles) for the given PR ids,
+ * scoped to each PR's latest 'review' kind. Returns a Map keyed by pr_id.
+ * Used by both the list endpoint and the detail endpoint to keep the
+ * "latest review" semantics consistent.
+ */
+async function computeFindingsByPr(
+  db: typeof container.db, // (or import the right type from your DB module)
+  prIds: string[],
+): Promise<Map<string, ReturnType<typeof emptyFindingsBuckets>>> {
+  const out = new Map<string, ReturnType<typeof emptyFindingsBuckets>>();
+  if (prIds.length === 0) return out;
+
+  // Latest review per PR (kind='review'), reusing the score-query semantics.
+  const reviewRows = await db
+    .select({ id: t.reviews.id, prId: t.reviews.prId })
+    .from(t.reviews)
+    .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
+    .orderBy(desc(t.reviews.createdAt));
+
+  const latestReviewIdByPr = new Map<string, string>();
+  for (const rv of reviewRows) {
+    if (!latestReviewIdByPr.has(rv.prId)) latestReviewIdByPr.set(rv.prId, rv.id);
+  }
+  const latestReviewIds = Array.from(latestReviewIdByPr.values());
+  if (latestReviewIds.length === 0) return out;
+
+  // Counts.
+  const countRows = await db
+    .select({
+      prId: t.reviews.prId,
+      severity: t.findings.severity,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+    .where(and(inArray(t.reviews.id, latestReviewIds), isNull(t.findings.dismissedAt)))
+    .groupBy(t.reviews.prId, t.findings.severity);
+
+  for (const row of countRows) {
+    const sev = row.severity as 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+    if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+    const bucket = out.get(row.prId) ?? emptyFindingsBuckets();
+    bucket[sev].count = row.count;
+    out.set(row.prId, bucket);
+  }
+
+  // Titles.
+  const titleRows = await db.execute<{
+    pr_id: string;
+    severity: string;
+    id: string;
+    title: string;
+  }>(sql`
+    SELECT pr_id, severity, id, title FROM (
+      SELECT r.pr_id, f.severity, f.id, f.title,
+        ROW_NUMBER() OVER (
+          PARTITION BY r.pr_id, f.severity
+          ORDER BY f.confidence DESC, f.id ASC
+        ) AS rn
+      FROM ${t.findings} f
+      JOIN ${t.reviews} r ON r.id = f.review_id
+      WHERE r.id = ANY(${latestReviewIds})
+        AND f.dismissed_at IS NULL
+    ) ranked
+    WHERE rn <= 5
+  `);
+
+  for (const row of titleRows.rows ?? titleRows) {
+    const sev = row.severity as 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+    if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+    const bucket = out.get(row.pr_id) ?? emptyFindingsBuckets();
+    bucket[sev].titles.push({ id: row.id, title: row.title });
+    out.set(row.pr_id, bucket);
+  }
+
+  return out;
+}
+```
+
+- [ ] **Step 4: Refactor Task 2/3's inline queries to call `computeFindingsByPr(container.db, prIds)`**
+
+In the list endpoint, replace the inline counts and titles queries (added in Tasks 2-3) with one call:
+
+```typescript
+const findingsByPr = await computeFindingsByPr(container.db, prIds);
+```
+
+Then `findings: findingsByPr.get(r.id) ?? emptyFindingsBuckets()` in the row map (unchanged).
+
+- [ ] **Step 5: Use the same helper in the detail endpoint** at line 160. After fetching the PR row from the DB, add:
+
+```typescript
+const findingsByPr = await computeFindingsByPr(container.db, [pr.id]);
+const findings = findingsByPr.get(pr.id) ?? emptyFindingsBuckets();
+// then include `findings` in the response object.
+```
+
+- [ ] **Step 6: Run all tests in the findings file**
+
+Run: `pnpm -C server exec vitest run pulls-list-findings.it`
+Expected: PASS — all 4 tests green (3 list + 1 detail).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add server/src/modules/pulls/routes.ts server/test/pulls-list-findings.it.test.ts
+git commit -m 'feat(pulls): wire findings into detail endpoint via shared helper
+
+Extracts computeFindingsByPr() so both GET /repos/:id/pulls and
+GET /pulls/:id share the same "latest review" semantics for findings.'
 ```
 
 ---
