@@ -85,10 +85,10 @@ describe('FindingsCell', () => {
     await user.hover(badge);
 
     // Tooltip should appear with both titles
-    expect(await screen.findByText('Rate limit bypass')).toBeInTheDocument();
-    expect(screen.getByText('Auth check skipped')).toBeInTheDocument();
+    expect(await screen.findByText(/Rate limit bypass/)).toBeInTheDocument();
+    expect(screen.getByText(/Auth check skipped/)).toBeInTheDocument();
 
-    await user.click(screen.getByText('Rate limit bypass'));
+    await user.click(screen.getByText(/Rate limit bypass/));
     expect(push).toHaveBeenCalledWith(
       expect.stringContaining('/pulls/1?tab=findings#finding-f1'),
     );

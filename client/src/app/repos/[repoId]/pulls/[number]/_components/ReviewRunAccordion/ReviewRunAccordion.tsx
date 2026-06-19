@@ -56,6 +56,9 @@ export function ReviewRunAccordion({
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
+  const filteredFindings = severityFilter
+    ? findings.filter((f) => f.severity === severityFilter)
+    : findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
 
@@ -97,8 +100,9 @@ export function ReviewRunAccordion({
           </Badge>
         )}
         <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
-          {findings.length} finding{findings.length === 1 ? "" : "s"}
-          {blockers > 0 ? ` · ${blockers} blocker${blockers === 1 ? "" : "s"}` : ""}
+          {severityFilter
+            ? `${filteredFindings.length} ${severityFilter.toLowerCase()} finding${filteredFindings.length === 1 ? "" : "s"} (${findings.length} total)`
+            : `${findings.length} finding${findings.length === 1 ? "" : "s"}${blockers > 0 ? ` · ${blockers} blocker${blockers === 1 ? "" : "s"}` : ""}`}
         </span>
         <span style={{ flex: 1 }} />
         {review.score != null && (

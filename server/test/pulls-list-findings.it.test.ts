@@ -147,10 +147,8 @@ d('GET /repos/:id/pulls — findings counts', () => {
       .values({ workspaceId, prId: prAId, kind: 'review', score: 80, model: 'test' })
       .returning();
 
-    // Wait 1 ms so createdAt differs and this review is NOT the latest.
-    // We want the beforeEach review to remain "latest" — actually we want THIS
-    // review to be latest (newest). We insert it after beforeEach, so it will be
-    // newer → it IS the latest review for prAId. We seed exactly 7 CRITICAL findings.
+    // Insert a fresh review after beforeEach so it has the latest createdAt
+    // and our 7 confidence-distinct findings become the ones the query returns.
     await pg.handle.db.insert(t.findings).values([
       { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 1, endLine: 1, severity: 'CRITICAL', category: 'sec', title: 'T01', rationale: 'r', confidence: 0.1, kind: 'finding' },
       { reviewId: reviewExtra!.id, file: 'f.ts', startLine: 2, endLine: 2, severity: 'CRITICAL', category: 'sec', title: 'T02', rationale: 'r', confidence: 0.2, kind: 'finding' },
@@ -245,7 +243,7 @@ d('GET /repos/:id/pulls — findings counts', () => {
     }
   });
 
-  it('excluded dismissed findings from counts', async () => {
+  it('excludes dismissed findings from counts', async () => {
     const cfg = loadConfig({ DATABASE_URL: pg.url, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
 
     // Add a dismissed CRITICAL finding to PR B's review — it should NOT count.

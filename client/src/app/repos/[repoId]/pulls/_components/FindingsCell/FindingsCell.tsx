@@ -12,14 +12,12 @@ const HOVER_DELAY_MS = 150;
 function Tooltip({
   severity,
   bucket,
-  baseHref,
   onTitleClick,
   onMoreClick,
   open,
 }: {
   severity: SevKey;
   bucket: PrMeta['findings']['CRITICAL'];
-  baseHref: string;
   onTitleClick: (id: string) => void;
   onMoreClick: (severity: SevKey) => void;
   open: boolean;
@@ -63,7 +61,7 @@ function Tooltip({
                 width: '100%',
               }}
             >
-              {t.title}
+              <span aria-hidden>• </span>{t.title}
             </button>
           </li>
         ))}
@@ -93,13 +91,11 @@ function Tooltip({
 function SeverityCell({
   severity,
   bucket,
-  baseHref,
   onTitleClick,
   onMoreClick,
 }: {
   severity: SevKey;
   bucket: PrMeta['findings']['CRITICAL'];
-  baseHref: string;
   onTitleClick: (id: string) => void;
   onMoreClick: (severity: SevKey) => void;
 }) {
@@ -134,7 +130,6 @@ function SeverityCell({
       <Tooltip
         severity={severity}
         bucket={bucket}
-        baseHref={baseHref}
         onTitleClick={onTitleClick}
         onMoreClick={onMoreClick}
         open={open && bucket.titles.length > 0}
@@ -161,7 +156,6 @@ export function FindingsCell({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           key={sev}
           severity={sev}
           bucket={pr.findings[sev]}
-          baseHref={baseHref}
           onTitleClick={onTitleClick}
           onMoreClick={onMoreClick}
         />
