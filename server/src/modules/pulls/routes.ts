@@ -216,7 +216,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         })
         .where(eq(t.pullRequests.id, pr.id));
 
-      return { ...detail, id: pr.id, findings: emptyFindingsBuckets() };
+      const { findings: _adapterFindings, ...detailRest } = detail;
+      return { ...detailRest, id: pr.id, findings: emptyFindingsBuckets() };
     } catch (err) {
       app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
