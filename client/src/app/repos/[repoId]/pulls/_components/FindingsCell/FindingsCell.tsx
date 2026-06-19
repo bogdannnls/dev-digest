@@ -14,18 +14,21 @@ function Tooltip({
   bucket,
   baseHref,
   onTitleClick,
+  onMoreClick,
   open,
 }: {
   severity: SevKey;
   bucket: PrMeta['findings']['CRITICAL'];
   baseHref: string;
   onTitleClick: (id: string) => void;
+  onMoreClick: (severity: SevKey) => void;
   open: boolean;
 }) {
   if (!open) return null;
   const overflow = Math.max(0, bucket.count - bucket.titles.length);
   return (
     <div
+      id={`tooltip-${severity}`}
       role="tooltip"
       style={{
         position: 'absolute',
@@ -66,17 +69,22 @@ function Tooltip({
         ))}
       </ul>
       {overflow > 0 && (
-        <a
-          href={`${baseHref}?tab=findings&severity=${severity}`}
+        <button
+          type="button"
+          onClick={() => onMoreClick(severity)}
           style={{
             display: 'inline-block',
             marginTop: 4,
             fontSize: 12,
             color: 'var(--text-muted)',
+            background: 'transparent',
+            border: 0,
+            cursor: 'pointer',
+            padding: 0,
           }}
         >
           +{overflow} more
-        </a>
+        </button>
       )}
     </div>
   );
@@ -87,14 +95,22 @@ function SeverityCell({
   bucket,
   baseHref,
   onTitleClick,
+  onMoreClick,
 }: {
   severity: SevKey;
   bucket: PrMeta['findings']['CRITICAL'];
   baseHref: string;
   onTitleClick: (id: string) => void;
+  onMoreClick: (severity: SevKey) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
   const onEnter = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -120,6 +136,7 @@ function SeverityCell({
         bucket={bucket}
         baseHref={baseHref}
         onTitleClick={onTitleClick}
+        onMoreClick={onMoreClick}
         open={open && bucket.titles.length > 0}
       />
     </span>
@@ -134,6 +151,8 @@ export function FindingsCell({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const baseHref = `/repos/${repoId}/pulls/${pr.number}`;
   const onTitleClick = (id: string) =>
     router.push(`${baseHref}?tab=findings#finding-${id}`);
+  const onMoreClick = (severity: SevKey) =>
+    router.push(`${baseHref}?tab=findings&severity=${severity}`);
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -144,6 +163,7 @@ export function FindingsCell({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           bucket={pr.findings[sev]}
           baseHref={baseHref}
           onTitleClick={onTitleClick}
+          onMoreClick={onMoreClick}
         />
       ))}
     </div>

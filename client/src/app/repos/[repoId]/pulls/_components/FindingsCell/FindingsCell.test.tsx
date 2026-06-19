@@ -116,6 +116,11 @@ describe('FindingsCell', () => {
     );
     const user = userEvent.setup();
     await user.hover(screen.getByLabelText(/critical/i));
-    expect(await screen.findByText(/\+3 more/)).toBeInTheDocument();
+    const moreLink = await screen.findByText(/\+3 more/);
+    expect(moreLink).toBeInTheDocument();
+    await user.click(moreLink);
+    expect(push).toHaveBeenCalledWith(
+      expect.stringContaining('?tab=findings&severity=CRITICAL'),
+    );
   });
 });
