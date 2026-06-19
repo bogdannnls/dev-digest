@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput, emptyFindingsBuckets } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
@@ -113,19 +113,68 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap. We also capture reviewId here so the findings query
+    // below can join from it without a second "latest review" lookup.
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewByPr = new Map<string, { score: number | null; reviewId: string }>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
         .from(t.reviews)
         .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (!latestReviewByPr.has(rv.prId)) {
+          latestReviewByPr.set(rv.prId, { score: rv.score, reviewId: rv.id });
+        }
+      }
+    }
+
+    // Per-severity finding counts on the LATEST review per PR. One IN-query +
+    // JS grouping, same pattern as the score query above. Dismissed findings
+    // are excluded; accepted findings still count (they're still real issues).
+    type SevKey = 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+    const emptyBucket = (): { count: number; titles: { id: string; title: string }[] } => ({
+      count: 0,
+      titles: [],
+    });
+    const emptyFindings = (): Record<SevKey, ReturnType<typeof emptyBucket>> => ({
+      CRITICAL: emptyBucket(),
+      WARNING: emptyBucket(),
+      SUGGESTION: emptyBucket(),
+    });
+
+    const findingsByPr = new Map<string, Record<SevKey, ReturnType<typeof emptyBucket>>>();
+    if (prIds.length > 0) {
+      const latestReviewIds = Array.from(latestReviewByPr.values())
+        .map((v) => v.reviewId)
+        .filter((id): id is string => !!id);
+
+      if (latestReviewIds.length > 0) {
+        const countRows = await container.db
+          .select({
+            prId: t.reviews.prId,
+            severity: t.findings.severity,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(t.findings)
+          .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+          .where(
+            and(
+              inArray(t.reviews.id, latestReviewIds),
+              isNull(t.findings.dismissedAt),
+            ),
+          )
+          .groupBy(t.reviews.prId, t.findings.severity);
+
+        for (const row of countRows) {
+          const sev = row.severity as SevKey;
+          if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+          const bucket = findingsByPr.get(row.prId) ?? emptyFindings();
+          bucket[sev].count = row.count;
+          findingsByPr.set(row.prId, bucket);
+        }
       }
     }
 
@@ -153,7 +202,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
-        findings: emptyFindingsBuckets(),
+        findings: findingsByPr.get(r.id) ?? emptyFindings(),
       };
     });
   });
