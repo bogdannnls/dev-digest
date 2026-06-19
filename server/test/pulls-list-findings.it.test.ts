@@ -219,6 +219,32 @@ d('GET /repos/:id/pulls — findings counts', () => {
     }
   });
 
+  it('GET /pulls/:id returns findings on the detail response', async () => {
+    const cfg = loadConfig({ DATABASE_URL: pg.url, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+
+    // prAId already has a review with 2 CRITICAL + 1 WARNING from beforeEach.
+    // We assert the detail endpoint returns real per-severity counts (not zeros).
+    const app = await buildApp({
+      config: cfg,
+      db: pg.handle.db,
+      overrides: {
+        github: new MockGitHubClient({ pulls: [] }),
+        git: new MockGitClient(),
+      },
+    });
+
+    try {
+      const res = await app.inject({ method: 'GET', url: `/pulls/${prAId}` });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as { findings: any };
+      expect(body.findings.CRITICAL.count).toBe(2);
+      expect(body.findings.WARNING.count).toBe(1);
+      expect(body.findings.SUGGESTION.count).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('excluded dismissed findings from counts', async () => {
     const cfg = loadConfig({ DATABASE_URL: pg.url, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
 

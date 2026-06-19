@@ -8,6 +8,88 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import type { Db } from '../../db/client.js';
+
+/**
+ * Compute per-severity findings (counts + top-5 titles) for the given PR ids,
+ * scoped to each PR's latest 'review' kind. Returns a Map keyed by pr_id.
+ * Used by both the list endpoint and the detail endpoint to keep the
+ * "latest review" semantics consistent.
+ */
+async function computeFindingsByPr(
+  db: Db,
+  prIds: string[],
+): Promise<Map<string, ReturnType<typeof emptyFindingsBuckets>>> {
+  const out = new Map<string, ReturnType<typeof emptyFindingsBuckets>>();
+  if (prIds.length === 0) return out;
+
+  // Latest review per PR (kind='review'), reusing the score-query semantics.
+  const reviewRows = await db
+    .select({ id: t.reviews.id, prId: t.reviews.prId })
+    .from(t.reviews)
+    .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
+    .orderBy(desc(t.reviews.createdAt));
+
+  const latestReviewIdByPr = new Map<string, string>();
+  for (const rv of reviewRows) {
+    if (!latestReviewIdByPr.has(rv.prId)) latestReviewIdByPr.set(rv.prId, rv.id);
+  }
+  const latestReviewIds = Array.from(latestReviewIdByPr.values());
+  if (latestReviewIds.length === 0) return out;
+
+  // Per-severity finding counts, scoped to the latest review per PR.
+  // Dismissed findings are excluded; accepted findings still count.
+  const countRows = await db
+    .select({
+      prId: t.reviews.prId,
+      severity: t.findings.severity,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+    .where(and(inArray(t.reviews.id, latestReviewIds), isNull(t.findings.dismissedAt)))
+    .groupBy(t.reviews.prId, t.findings.severity);
+
+  for (const row of countRows) {
+    const sev = row.severity as 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+    if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+    const bucket = out.get(row.prId) ?? emptyFindingsBuckets();
+    bucket[sev].count = row.count;
+    out.set(row.prId, bucket);
+  }
+
+  // Top 5 titles per (pr_id, severity) by confidence DESC. Window function via
+  // raw SQL — Drizzle table refs prevent typos and keep schema rename-safe.
+  const titleRows = await db.execute<{
+    pr_id: string;
+    severity: string;
+    id: string;
+    title: string;
+  }>(sql`
+    SELECT pr_id, severity, id, title FROM (
+      SELECT r.pr_id, f.severity, f.id, f.title,
+        ROW_NUMBER() OVER (
+          PARTITION BY r.pr_id, f.severity
+          ORDER BY f.confidence DESC, f.id ASC
+        ) AS rn
+      FROM ${t.findings} f
+      JOIN ${t.reviews} r ON r.id = f.review_id
+      WHERE r.id IN ${latestReviewIds}
+        AND f.dismissed_at IS NULL
+    ) ranked
+    WHERE rn <= 5
+  `);
+
+  for (const row of titleRows) {
+    const sev = row.severity as 'CRITICAL' | 'WARNING' | 'SUGGESTION';
+    if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
+    const bucket = out.get(row.pr_id) ?? emptyFindingsBuckets();
+    bucket[sev].titles.push({ id: row.id, title: row.title });
+    out.set(row.pr_id, bucket);
+  }
+
+  return out;
+}
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -111,9 +193,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review score AND per-severity findings (counts + top-5 titles).
-    // Both keyed off the same `latestReviewIds` so they stay consistent — if
-    // "latest review" semantics ever change, change them in both places.
+    // Score for each PR from its latest review (for the review status badge).
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null; reviewId: string }>();
     if (prIds.length > 0) {
@@ -130,82 +210,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Per-severity finding counts on the LATEST review per PR. One IN-query +
-    // JS grouping, same pattern as the score query above. Dismissed findings
-    // are excluded; accepted findings still count (they're still real issues).
-    type SevKey = 'CRITICAL' | 'WARNING' | 'SUGGESTION';
-    const emptyBucket = (): { count: number; titles: { id: string; title: string }[] } => ({
-      count: 0,
-      titles: [],
-    });
-    const emptyFindings = (): Record<SevKey, ReturnType<typeof emptyBucket>> => ({
-      CRITICAL: emptyBucket(),
-      WARNING: emptyBucket(),
-      SUGGESTION: emptyBucket(),
-    });
-
-    const findingsByPr = new Map<string, Record<SevKey, ReturnType<typeof emptyBucket>>>();
-    if (prIds.length > 0) {
-      const latestReviewIds = Array.from(latestReviewByPr.values())
-        .map((v) => v.reviewId)
-        .filter((id): id is string => !!id);
-
-      if (latestReviewIds.length > 0) {
-        const countRows = await container.db
-          .select({
-            prId: t.reviews.prId,
-            severity: t.findings.severity,
-            count: sql<number>`count(*)::int`,
-          })
-          .from(t.findings)
-          .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
-          .where(
-            and(
-              inArray(t.reviews.id, latestReviewIds),
-              isNull(t.findings.dismissedAt),
-            ),
-          )
-          .groupBy(t.reviews.prId, t.findings.severity);
-
-        for (const row of countRows) {
-          const sev = row.severity as SevKey;
-          if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
-          const bucket = findingsByPr.get(row.prId) ?? emptyFindings();
-          bucket[sev].count = row.count;
-          findingsByPr.set(row.prId, bucket);
-        }
-
-        // Top 5 titles per (pr_id, severity) by confidence DESC. Drizzle's raw
-        // SQL is required for the window function — kept inline and short.
-        const titleRows = await container.db.execute<{
-          pr_id: string;
-          severity: string;
-          id: string;
-          title: string;
-        }>(sql`
-          SELECT pr_id, severity, id, title FROM (
-            SELECT r.pr_id, f.severity, f.id, f.title,
-              ROW_NUMBER() OVER (
-                PARTITION BY r.pr_id, f.severity
-                ORDER BY f.confidence DESC, f.id ASC
-              ) AS rn
-            FROM findings f
-            JOIN reviews r ON r.id = f.review_id
-            WHERE r.id IN ${latestReviewIds}
-              AND f.dismissed_at IS NULL
-          ) ranked
-          WHERE rn <= 5
-        `);
-
-        for (const row of titleRows) {
-          const sev = row.severity as SevKey;
-          if (sev !== 'CRITICAL' && sev !== 'WARNING' && sev !== 'SUGGESTION') continue;
-          const bucket = findingsByPr.get(row.pr_id) ?? emptyFindings();
-          bucket[sev].titles.push({ id: row.id, title: row.title });
-          findingsByPr.set(row.pr_id, bucket);
-        }
-      }
-    }
+    // Per-severity findings (counts + top-5 titles) for all PRs in this list.
+    // Shared helper keeps "latest review" semantics consistent with the detail endpoint.
+    const findingsByPr = await computeFindingsByPr(container.db, prIds);
 
     const now = Date.now();
     return rows.map((r) => {
@@ -231,7 +238,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
-        findings: findingsByPr.get(r.id) ?? emptyFindings(),
+        findings: findingsByPr.get(r.id) ?? emptyFindingsBuckets(),
       };
     });
   });
@@ -250,6 +257,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .from(t.repos)
       .where(eq(t.repos.id, pr.repoId));
     if (!repo) throw new NotFoundError('Repo not found');
+
+    // Compute per-severity findings from DB (shared helper, same semantics as list endpoint).
+    const findingsByPrDetail = await computeFindingsByPr(container.db, [pr.id]);
+    const findings = findingsByPrDetail.get(pr.id) ?? emptyFindingsBuckets();
 
     // Local-first: refresh detail from GitHub when a token is configured;
     // otherwise serve the persisted files/commits/body (seeded or previously
@@ -295,7 +306,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .where(eq(t.pullRequests.id, pr.id));
 
       const { findings: _adapterFindings, ...detailRest } = detail;
-      return { ...detailRest, id: pr.id, findings: emptyFindingsBuckets() };
+      return { ...detailRest, id: pr.id, findings };
     } catch (err) {
       app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -327,7 +338,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           author: c.author,
           committed_at: c.committedAt?.toISOString() ?? null,
         })),
-        findings: emptyFindingsBuckets(),
+        findings,
       };
     }
   });
