@@ -12,6 +12,7 @@ import type {
   CommitFilesPayload,
   IssueMeta,
 } from '@devdigest/shared';
+import { emptyFindingsBuckets } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
 const TIMEOUT = 30_000;
@@ -60,6 +61,7 @@ export class OctokitGitHubClient implements GitHubClient {
             status: mapStatus(pr.state, Boolean(pr.merged_at)) as PrStatus,
             opened_at: pr.created_at,
             updated_at: pr.updated_at,
+            findings: emptyFindingsBuckets(),
           }));
         })(),
         TIMEOUT,
@@ -116,6 +118,7 @@ export class OctokitGitHubClient implements GitHubClient {
               committed_at: c.commit.author?.date,
             })),
             linked_issue: linkedIssue,
+            findings: emptyFindingsBuckets(),
           };
         })(),
         TIMEOUT,

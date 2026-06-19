@@ -32,6 +32,7 @@ import type {
   SecretsProvider,
   SecretKey,
 } from '@devdigest/shared';
+import { emptyFindingsBuckets } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
 
 /**
@@ -151,6 +152,7 @@ export class MockGitHubClient implements GitHubClient {
           status: 'open',
           opened_at: '2026-06-01T00:00:00Z',
           updated_at: '2026-06-01T03:00:00Z',
+          findings: emptyFindingsBuckets(),
         },
       ]
     );
@@ -181,6 +183,7 @@ export class MockGitHubClient implements GitHubClient {
         { sha: 'a1b2c3d4', message: 'Add limiter', author: 'marisa.koch', committed_at: null },
       ],
       linked_issue: null,
+      findings: emptyFindingsBuckets(),
     };
     return { ...base, ...this.opts.detail };
   }

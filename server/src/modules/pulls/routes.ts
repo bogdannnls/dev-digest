@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
-import { PrCommentInput } from '@devdigest/shared';
+import { PrCommentInput, emptyFindingsBuckets } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -153,6 +153,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        findings: emptyFindingsBuckets(),
       };
     });
   });
@@ -215,7 +216,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         })
         .where(eq(t.pullRequests.id, pr.id));
 
-      return { ...detail, id: pr.id };
+      return { ...detail, id: pr.id, findings: emptyFindingsBuckets() };
     } catch (err) {
       app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -247,6 +248,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           author: c.author,
           committed_at: c.committedAt?.toISOString() ?? null,
         })),
+        findings: emptyFindingsBuckets(),
       };
     }
   });

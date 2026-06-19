@@ -204,6 +204,11 @@ describe('platform DTOs', () => {
         status: 'open',
         files: [],
         commits: [],
+        findings: {
+          CRITICAL: { count: 0, titles: [] },
+          WARNING: { count: 0, titles: [] },
+          SUGGESTION: { count: 0, titles: [] },
+        },
       }),
     ).not.toThrow();
   });
