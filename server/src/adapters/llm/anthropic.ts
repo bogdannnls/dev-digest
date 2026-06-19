@@ -16,6 +16,16 @@ import { ExternalServiceError } from '../../platform/errors.js';
 const DEFAULT_TIMEOUT = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
+/**
+ * Claude 4.x+ models (Opus 4.x, Sonnet 4.x, Haiku 4.x) and the Fable family
+ * reject a custom `temperature` and respond with 400 `temperature is deprecated
+ * for this model`. Legacy claude-3-* still accepts it. Mirrors the
+ * isReasoningModel pattern in openai.ts.
+ */
+function rejectsTemperature(model: string): boolean {
+  return /^claude-(opus|sonnet|haiku)-[4-9]|^claude-fable-/.test(model);
+}
+
 /** Anthropic has no embeddings API; embeddings come from the OpenAI Embedder. */
 function splitSystem(messages: ChatMessage[]): {
   system: string;
@@ -69,7 +79,7 @@ export class AnthropicProvider implements LLMProvider {
       system: system || undefined,
       messages: rest,
       max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-      temperature: req.temperature ?? 0.2,
+      ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0.2 }),
     });
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -104,7 +114,7 @@ export class AnthropicProvider implements LLMProvider {
             system: system || undefined,
             messages,
             max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
+            ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0 }),
             tools: [
               {
                 name: toolName,
