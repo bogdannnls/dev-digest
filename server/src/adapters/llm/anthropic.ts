@@ -148,9 +148,22 @@ export class AnthropicProvider implements LLMProvider {
         };
       }
       messages.push({ role: 'assistant', content: res.content });
+      // Anthropic requires the message AFTER a `tool_use` to contain a matching
+      // `tool_result`. Sending plain text triggers 400 "tool_use ids were found
+      // without tool_result blocks". `is_error: true` tells the model the tool
+      // call needs correction (mirrors the OpenAI-side reprompt semantics).
       messages.push({
         role: 'user',
-        content: parsed.repromptMessage,
+        content: toolUse
+          ? [
+              {
+                type: 'tool_result',
+                tool_use_id: toolUse.id,
+                content: parsed.repromptMessage,
+                is_error: true,
+              },
+            ]
+          : parsed.repromptMessage,
       });
     }
 
