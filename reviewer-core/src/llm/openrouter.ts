@@ -24,6 +24,12 @@ import { toJsonSchema, parseWithRepair } from './structured.js';
 
 const NOT_SUPPORTED = 'OpenRouterProvider only implements completeStructured';
 
+// OpenRouter pre-reserves credits against `max_tokens` (for its 5% surcharge,
+// even under BYOK) — omitting the field makes it reserve the model's full
+// output window (e.g. 65k for Opus), which trips a 402 on small balances.
+// Mirror the Anthropic adapter's default so callers get a sane ceiling.
+const DEFAULT_MAX_TOKENS = 4096;
+
 export interface OpenRouterProviderOptions {
   /** OpenAI-compatible base URL (default: OpenRouter). */
   baseURL?: string;
@@ -70,7 +76,7 @@ export class OpenRouterProvider implements LLMProvider {
         model: req.model,
         messages,
         temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+        max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
         response_format: {
           type: 'json_schema',
           json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
