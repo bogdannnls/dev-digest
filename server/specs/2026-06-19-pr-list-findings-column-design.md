@@ -10,10 +10,10 @@ The PR list table at `/repos/:id/pulls` shows a `SCORE` ring but not the
 per-severity findings breakdown. A score alone can't distinguish "73 with 3
 critical issues" from "73 with 5 suggestions", forcing a click into the PR
 detail page to triage. The list response was deliberately kept findings-free
-(see comment at [server/src/modules/pulls/routes.ts:115-117](../../../server/src/modules/pulls/routes.ts#L115-L117))
+(see comment at [server/src/modules/pulls/routes.ts:115-117](../../server/src/modules/pulls/routes.ts#L115-L117))
 — this design reverses that decision.
 
-The `PrRowView` type at [client/src/lib/types.ts:38](../../../client/src/lib/types.ts#L38)
+The `PrRowView` type at [client/src/lib/types.ts:38](../../client/src/lib/types.ts#L38)
 was scaffolded with a `findings: { CRITICAL, WARNING, SUGGESTION }` field but
 nothing consumes it. This work wires the missing column up end-to-end.
 
@@ -55,7 +55,7 @@ Add rate...    marisa   M·285     61    •Needs       3h      ⊘2  ⚠2  💡
 
 - **Severity icons + colors** reuse the existing `SeverityBadge` component
   already exported from `@devdigest/ui/primitives`
-  ([client/src/vendor/ui/primitives/Badge.tsx](../../../client/src/vendor/ui/primitives/Badge.tsx)).
+  ([client/src/vendor/ui/primitives/Badge.tsx](../../client/src/vendor/ui/primitives/Badge.tsx)).
   FindingsCell renders one `SeverityBadge compact` per severity. No new
   shared helper module needed — the badge already encapsulates icon, color,
   and label, and the list will visually match the detail page by
@@ -97,7 +97,7 @@ strings). For typical 5–50 row lists this is well below network noise.
 
 ## Backend changes
 
-Single file touched: [server/src/modules/pulls/routes.ts](../../../server/src/modules/pulls/routes.ts).
+Single file touched: [server/src/modules/pulls/routes.ts](../../server/src/modules/pulls/routes.ts).
 No schema changes. No migrations. No new endpoints.
 
 Two new queries added after the existing latest-review IN-query at line 121:
@@ -134,7 +134,7 @@ Two new queries added after the existing latest-review IN-query at line 121:
    ```
 
 JS-side grouping into the response shape mirrors the existing
-`latestReviewByPr` pattern at [server/src/modules/pulls/routes.ts:119](../../../server/src/modules/pulls/routes.ts#L119):
+`latestReviewByPr` pattern at [server/src/modules/pulls/routes.ts:119](../../server/src/modules/pulls/routes.ts#L119):
 two `Map<prId, ...>` lookups, no new abstractions.
 
 **"Latest review" definition** — same as the existing SCORE query: latest row
@@ -152,7 +152,7 @@ If a PR has no review, all three severity buckets are
   policy needs to change later, it's a one-line filter addition.
 
 **Stale code to remove:** the misleading comment at
-[server/src/modules/pulls/routes.ts:115-117](../../../server/src/modules/pulls/routes.ts#L115-L117)
+[server/src/modules/pulls/routes.ts:115-117](../../server/src/modules/pulls/routes.ts#L115-L117)
 explicitly saying findings are intentionally not surfaced. Replace with a
 one-liner describing the new behavior.
 
@@ -167,7 +167,7 @@ already indexed; `severity` has low cardinality).
 
 No schema changes.
 
-The shared API response type ([server/src/vendor/shared/](../../../server/src/vendor/shared/),
+The shared API response type ([server/src/vendor/shared/](../../server/src/vendor/shared/),
 ultimately exported as `PrMeta` from `@devdigest/shared`) gains:
 
 ```typescript
@@ -186,12 +186,12 @@ boundary") gets the same field added.
 
 **Files touched:**
 
-- [client/src/lib/types.ts](../../../client/src/lib/types.ts) — upgrade the
+- [client/src/lib/types.ts](../../client/src/lib/types.ts) — upgrade the
   scaffolded `PrRowView.findings` from `Record<Sev, number>` to the new
   richer shape.
-- [client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx](../../../client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx) —
+- [client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx](../../client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx) —
   insert a `<FindingsCell />` between the existing Status and Updated cells.
-- [client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx](../../../client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx) —
+- [client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx](../../client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx) —
   read an optional `?severity=<SEV>` query param to pre-filter, and add
   scroll-to-anchor on `#finding-<id>`.
 - The pulls table header (in the parent of PRRow) — add `FINDINGS` column

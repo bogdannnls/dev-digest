@@ -4,7 +4,7 @@
 
 **Goal:** Add a seventh column to the PR list table showing per-severity finding counts, with a hover-tooltip listing the top finding titles for each severity and click-to-deep-link into the PR detail page.
 
-**Architecture:** Findings counts + top-5 titles per severity ride along on the existing `GET /repos/:id/pulls` response (single round-trip; one new counts query and one new top-N window-function query). The frontend composes the existing `SeverityBadge` from `@devdigest/ui/primitives` with a small in-file hover popover. No schema changes, no migrations, no new endpoints. Spec: [docs/superpowers/specs/2026-06-19-pr-list-findings-column-design.md](../specs/2026-06-19-pr-list-findings-column-design.md).
+**Architecture:** Findings counts + top-5 titles per severity ride along on the existing `GET /repos/:id/pulls` response (single round-trip; one new counts query and one new top-N window-function query). The frontend composes the existing `SeverityBadge` from `@devdigest/ui/primitives` with a small in-file hover popover. No schema changes, no migrations, no new endpoints. Spec: [2026-06-19-pr-list-findings-column-design.md](./2026-06-19-pr-list-findings-column-design.md).
 
 **Tech Stack:** Fastify 5 + Drizzle (server), Next.js 15 + React 19 + TanStack Query (client), Zod for boundary validation, Vitest for tests, Postgres 16 (real DB via `test/helpers/pg.ts` for integration tests).
 
@@ -13,7 +13,7 @@
 - All integration test filenames MUST end in `.it.test.ts` (per server/CLAUDE.md). Unit tests end in `.test.ts`.
 - Routes register Zod schemas at the boundary; do NOT skip the schema update.
 - No raw `throw new Error()` in route handlers; use types from `platform/errors.ts`.
-- Reuse existing `SeverityBadge` from `@devdigest/ui/primitives` ([client/src/vendor/ui/primitives/Badge.tsx:52](../../../client/src/vendor/ui/primitives/Badge.tsx)). Do NOT introduce a parallel severity helper.
+- Reuse existing `SeverityBadge` from `@devdigest/ui/primitives` ([client/src/vendor/ui/primitives/Badge.tsx:52](../../client/src/vendor/ui/primitives/Badge.tsx)). Do NOT introduce a parallel severity helper.
 - No new npm dependencies. Tooltip is a ~30-line in-file React component using `onMouseEnter`/`onMouseLeave`.
 - Findings filter: `dismissed_at IS NULL`. Accepted findings ARE counted.
 - "Latest review" = latest `reviews` row with `kind = 'review'` per `pr_id`, ordered by `created_at DESC` — matches the existing SCORE query in the same handler.
