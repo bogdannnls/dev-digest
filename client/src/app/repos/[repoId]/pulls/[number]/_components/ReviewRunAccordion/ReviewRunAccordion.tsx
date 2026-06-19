@@ -43,7 +43,7 @@ export function ReviewRunAccordion({
   targetRunId?: string | null;
   targetNonce?: number;
   /** When set, only findings with this severity are shown (driven by ?severity= URL param). */
-  severityFilter?: string | null;
+  severityFilter?: "CRITICAL" | "WARNING" | "SUGGESTION" | null;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);

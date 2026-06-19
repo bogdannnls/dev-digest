@@ -24,7 +24,7 @@ export function FindingsPanel({
   repoFullName?: string | null;
   headSha?: string | null;
   /** When set, only findings with this severity are shown (driven by ?severity= URL param). */
-  severityFilter?: string | null;
+  severityFilter?: "CRITICAL" | "WARNING" | "SUGGESTION" | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();

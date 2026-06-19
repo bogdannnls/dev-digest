@@ -10,6 +10,9 @@ import { s } from "./styles";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
 
+const VALID_SEVERITIES = new Set(["CRITICAL", "WARNING", "SUGGESTION"] as const);
+type ValidSeverity = "CRITICAL" | "WARNING" | "SUGGESTION";
+
 interface FindingsTabProps {
   prId: string | null;
   liveRunIds: string[];
@@ -44,7 +47,9 @@ export function FindingsTab({
 }: FindingsTabProps) {
   const searchParams = useSearchParams();
   // 'CRITICAL' | 'WARNING' | 'SUGGESTION' | null — driven by ?severity= deep-link from FindingsCell
-  const severityFilter = searchParams.get("severity");
+  const raw = searchParams.get("severity");
+  const severityFilter: ValidSeverity | null =
+    raw && VALID_SEVERITIES.has(raw as ValidSeverity) ? (raw as ValidSeverity) : null;
 
   // Scroll-to-anchor on mount when the hash matches a known finding.
   // Runs whenever the rendered finding count changes (i.e., after the list renders).
