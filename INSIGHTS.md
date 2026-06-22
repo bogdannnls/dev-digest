@@ -49,3 +49,13 @@ What we tried: considered putting the hook in `.claude/settings.local.json` (git
 What worked: hook in `.claude/settings.json` (committed). Skill copy under `.claude/skills/engineering-insights/` is also committed.
 
 Why it matters: hook and skill ship together — a teammate cloning the repo gets the skill but the automation that triggers it would otherwise live in personal config they don't have. Pair both in the committed file. Reserve `settings.local.json` for personal allow-lists / workflow tweaks.
+
+## 2026-06-23 — pr-self-review soft gate works end-to-end
+
+Context: building the pre-ready architectural check (skills `ui-architecture`, `onion-architecture` + dispatcher workflow `pr-self-review`).
+
+What we tried: planted one MUST violation per surface in a sub-worktree (raw `fetch` + `useEffect` data fetch on the client; raw `octokit` import + `throw new Error` on the server), ran the workflow.
+
+What worked: workflow detected both surfaces, dispatched parallel review agents loaded with the architecture skill + the matching framework skills, returned all four expected MUST findings on the right files/lines plus two bonus SHOULD findings from `react-best-practices` — evidence the multi-skill loading composes.
+
+Why it matters: confirms the soft gate is wired correctly end-to-end. The remaining risk is drift — Claude skipping the gate. Revisit if drift is observed.
