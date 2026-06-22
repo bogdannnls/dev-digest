@@ -11,6 +11,7 @@ import { SkillCard } from "./_components/SkillCard";
 import { SkillsToolbar } from "./_components/SkillsToolbar";
 import { SkillPreviewDrawer } from "./_components/SkillPreviewDrawer";
 import { DeleteSkillDialog } from "./_components/DeleteSkillDialog";
+import { AddSkillButton } from "./_components/AddSkillButton";
 import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
@@ -36,6 +37,9 @@ export function SkillsListView() {
             <h1 style={s.h1}>{t("list.title")}</h1>
             <p style={s.subtitle}>{t("list.subtitle")}</p>
           </div>
+          <div style={{ marginLeft: "auto" }}>
+            <AddSkillButton onCreate={() => router.push("/skills/new")} />
+          </div>
         </div>
 
         {isLoading && (
@@ -56,7 +60,13 @@ export function SkillsListView() {
           />
         )}
         {hasSkills && (
-          <SkillsToolbar query={query} onQuery={setQuery} types={types} onTypes={setTypes} />
+          <SkillsToolbar
+            query={query}
+            onQuery={setQuery}
+            types={types}
+            onTypes={setTypes}
+            actions={<AddSkillButton onCreate={() => router.push("/skills/new")} />}
+          />
         )}
         {filteredOut && (
           <EmptyState
