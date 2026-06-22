@@ -1,9 +1,6 @@
 export const meta = {
   name: 'pr-self-review',
-  description:
-    'Second-pass architectural review of uncommitted diff before claiming a task ready. ' +
-    'Detects whether client/ and/or server/ changed, dispatches parallel review agents loaded ' +
-    'with the architecture skills + matching framework skills, returns structured findings.',
+  description: 'Second-pass architectural review of uncommitted diff before claiming a task ready. Detects whether client/ and/or server/ changed, dispatches parallel review agents loaded with the architecture skills + matching framework skills, returns structured findings.',
   phases: [
     { title: 'Detect surfaces' },
     { title: 'Review' },
