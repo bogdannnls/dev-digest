@@ -84,13 +84,17 @@ export class SkillsRepository {
     id: string,
     patch: UpdateSkill,
   ): Promise<SkillRow | undefined> {
-    const existing = await this.getById(workspaceId, id);
-    if (!existing) return undefined;
-
-    const contentChanged = isContentChange(existing, patch);
-    const nextVersion = contentChanged ? existing.version + 1 : existing.version;
-
     return this.db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(t.skills)
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+        .limit(1);
+      if (!existing) return undefined;
+
+      const contentChanged = isContentChange(existing, patch);
+      const nextVersion = contentChanged ? existing.version + 1 : existing.version;
+
       const [row] = await tx
         .update(t.skills)
         .set({
