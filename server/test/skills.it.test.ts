@@ -245,4 +245,26 @@ d('skills module', () => {
     expect(res.statusCode).toBe(404);
     await app.close();
   });
+
+  it('skills are workspace-scoped: another workspace cannot read them', async () => {
+    const app = await makeApp();
+    const { db } = pg.handle;
+    const skillId = (
+      await app.inject({ method: 'POST', url: '/skills', payload: createBody })
+    ).json().id as string;
+
+    const [other] = await db.insert(t.workspaces).values({ name: 'other-ws' }).returning();
+    // The service exposes the cross-workspace check; calling the repo directly
+    // is enough to assert the SQL filters by workspaceId.
+    const { SkillsRepository } = await import('../src/modules/skills/repository.js');
+    const repo = new SkillsRepository(db);
+    expect(await repo.getById(other!.id, skillId)).toBeUndefined();
+    expect(await repo.list(other!.id)).toEqual([]);
+
+    // Cross-workspace PUT / DELETE / usage from the HTTP layer:
+    expect(await repo.update(other!.id, skillId, { name: 'x' })).toBeUndefined();
+    expect(await repo.deleteById(other!.id, skillId)).toBe(false);
+    expect(await repo.usage(other!.id, skillId)).toBeUndefined();
+    await app.close();
+  });
 });
