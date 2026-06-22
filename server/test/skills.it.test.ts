@@ -40,4 +40,56 @@ d('skills module', () => {
     expect(res.json()).toEqual([]);
     await app.close();
   });
+
+  const createBody = {
+    name: 'pr-quality-rubric',
+    description: 'Rubric for PR quality reviews.',
+    type: 'rubric' as const,
+    body: '## Checklist\n\n- Tests cover the change\n- Names reflect intent',
+  };
+
+  it('POST /skills creates a skill at version 1 and returns it', async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: 'POST', url: '/skills', payload: createBody });
+    expect(res.statusCode).toBe(201);
+    const skill = res.json();
+    expect(skill).toMatchObject({
+      name: createBody.name,
+      description: createBody.description,
+      type: 'rubric',
+      source: 'manual',
+      body: createBody.body,
+      enabled: true,
+      version: 1,
+    });
+    expect(typeof skill.id).toBe('string');
+    await app.close();
+  });
+
+  it('GET /skills/:id returns the created skill', async () => {
+    const app = await makeApp();
+    const id = (
+      await app.inject({ method: 'POST', url: '/skills', payload: createBody })
+    ).json().id as string;
+    const res = await app.inject({ method: 'GET', url: `/skills/${id}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id, name: createBody.name });
+    await app.close();
+  });
+
+  it('GET /skills/:id 404s for an unknown id', async () => {
+    const app = await makeApp();
+    const ghost = '00000000-0000-0000-0000-000000000000';
+    const res = await app.inject({ method: 'GET', url: `/skills/${ghost}` });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('POST /skills 422s when name is missing', async () => {
+    const app = await makeApp();
+    const { name: _ignored, ...rest } = createBody;
+    const res = await app.inject({ method: 'POST', url: '/skills', payload: rest });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
 });

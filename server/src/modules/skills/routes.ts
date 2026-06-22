@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
+import { SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
+import { IdParams } from '../_shared/schemas.js';
+import { NotFoundError } from '../../platform/errors.js';
 import { SkillsService } from './service.js';
 
 /**
@@ -12,6 +16,15 @@ import { SkillsService } from './service.js';
  *   PUT    /skills/:id          → update
  *   DELETE /skills/:id          → delete
  */
+
+const CreateSkillBody = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).optional(),
+  type: SkillType,
+  body: z.string().min(1),
+  enabled: z.boolean().optional(),
+});
+
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new SkillsService(app.container);
@@ -19,5 +32,19 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
   app.get('/skills', async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
+  });
+
+  app.get('/skills/:id', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const skill = await service.get(workspaceId, req.params.id);
+    if (!skill) throw new NotFoundError('Skill not found');
+    return skill;
+  });
+
+  app.post('/skills', { schema: { body: CreateSkillBody } }, async (req, reply) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const skill = await service.create(workspaceId, req.body);
+    reply.status(201);
+    return skill;
   });
 }
