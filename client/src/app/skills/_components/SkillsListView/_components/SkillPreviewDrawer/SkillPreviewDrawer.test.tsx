@@ -83,4 +83,21 @@ describe("SkillPreviewDrawer", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("fires onDeleteRequest when the kebab → Delete is chosen", async () => {
+    const onDeleteRequest = vi.fn();
+    render(
+      wrap(
+        <SkillPreviewDrawer
+          skillId="1"
+          onClose={() => undefined}
+          onEdit={() => undefined}
+          onDeleteRequest={onDeleteRequest}
+        />,
+      ),
+    );
+    await userEvent.click(screen.getByLabelText("more"));
+    await userEvent.click(screen.getByText(/Delete…/));
+    expect(onDeleteRequest).toHaveBeenCalledWith("1");
+  });
 });

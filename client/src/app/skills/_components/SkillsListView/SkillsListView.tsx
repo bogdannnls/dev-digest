@@ -10,6 +10,7 @@ import { useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "./_components/SkillCard";
 import { SkillsToolbar } from "./_components/SkillsToolbar";
 import { SkillPreviewDrawer } from "./_components/SkillPreviewDrawer";
+import { DeleteSkillDialog } from "./_components/DeleteSkillDialog";
 import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
@@ -85,6 +86,13 @@ export function SkillsListView() {
           onClose={() => setSelectedId(null)}
           onEdit={(id) => router.push(`/skills/${id}`)}
           onDeleteRequest={(id) => setPendingDelete(id)}
+        />
+      )}
+      {pendingDelete && (
+        <DeleteSkillDialog
+          skillId={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onDeleted={() => setSelectedId(null)}
         />
       )}
     </AppShell>
