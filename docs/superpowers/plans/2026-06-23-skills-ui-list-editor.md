@@ -478,7 +478,9 @@ export class SkillsRepository {
           evidenceFiles: values.evidenceFiles ?? null,
         })
         .returning();
-      if (!row) throw new Error('skill insert returned no row');
+      if (!row) {
+        throw new AppError('skill_insert_failed', 'unexpected empty insert', 500);
+      }
       await tx.insert(t.skillVersions).values({
         skillId: row.id,
         version: INITIAL_SKILL_VERSION,
@@ -490,7 +492,13 @@ export class SkillsRepository {
 }
 ```
 
-> Note: `throw new Error` here is *inside the database transaction callback* — it's a guard against an impossible Drizzle return shape, not a domain error reaching the request boundary. The route layer catches it as a generic 500. If you prefer, replace with `throw new AppError('skill_insert_failed', 'unexpected empty insert', 500)`.
+Add `AppError` to the imports at the top of `repository.ts`:
+
+```ts
+import { AppError } from '../../platform/errors.js';
+```
+
+> Note: `throw new AppError(...)` satisfies the `onion-architecture` rule that forbids `throw new Error()` inside modules. The route layer maps it to a 500 via the existing error handler.
 
 - [ ] **Step 4: Add get + create to the service**
 
