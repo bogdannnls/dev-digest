@@ -1,0 +1,45 @@
+import type { CSSProperties } from "react";
+
+export const s = {
+  wrap: {
+    border: "1px solid var(--border-strong)",
+    borderRadius: 7,
+    overflow: "hidden",
+    background: "var(--bg-elevated)",
+  } as CSSProperties,
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    padding: 6,
+    background: "var(--bg-surface)",
+    borderBottom: "1px solid var(--border)",
+  } as CSSProperties,
+  split: { display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: 320 } as CSSProperties,
+  splitSolo: { display: "block" } as CSSProperties,
+  pane: { padding: 12, fontSize: 13, lineHeight: 1.55, overflow: "auto" } as CSSProperties,
+  textarea: {
+    width: "100%",
+    height: "100%",
+    minHeight: 320,
+    border: "none",
+    outline: "none",
+    resize: "vertical",
+    background: "transparent",
+    color: "var(--text-primary)",
+    fontFamily: "var(--mono)",
+    fontSize: 13,
+    lineHeight: 1.55,
+    padding: 12,
+  } as CSSProperties,
+  previewSeparator: { borderLeft: "1px solid var(--border)" } as CSSProperties,
+  toggleButton: (active: boolean): CSSProperties => ({
+    padding: "4px 10px",
+    fontSize: 12,
+    borderRadius: 4,
+    border: "1px solid var(--border)",
+    background: active ? "var(--accent)" : "transparent",
+    color: active ? "var(--text-inverse)" : "var(--text-secondary)",
+    cursor: "pointer",
+  }),
+};

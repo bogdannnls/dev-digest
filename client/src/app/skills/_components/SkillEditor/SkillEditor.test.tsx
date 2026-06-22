@@ -64,14 +64,14 @@ describe("SkillEditor (create mode)", () => {
     expect(createButton).toBeDisabled();
     await userEvent.type(screen.getByPlaceholderText("secret-leakage-gate"), "secret-leakage-gate");
     expect(createButton).toBeDisabled();
-    await userEvent.type(screen.getByPlaceholderText(/## When to flag/), "body");
+    await userEvent.type(screen.getByRole("textbox", { name: "Body (markdown)" }), "body");
     expect(createButton).toBeEnabled();
   });
 
   it("submits + navigates to the new skill's edit route", async () => {
     render(wrap(<SkillEditor mode="create" />));
     await userEvent.type(screen.getByPlaceholderText("secret-leakage-gate"), "x");
-    await userEvent.type(screen.getByPlaceholderText(/## When to flag/), "body");
+    await userEvent.type(screen.getByRole("textbox", { name: "Body (markdown)" }), "body");
     await userEvent.click(screen.getByRole("button", { name: /Create skill/i }));
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "x", body: "body", type: "custom" })));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/skills/new-id"));

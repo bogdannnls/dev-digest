@@ -3,12 +3,13 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, ErrorState, FormField, SelectInput, Skeleton, TextInput, Textarea, Toggle } from "@devdigest/ui";
+import { Button, ErrorState, FormField, SelectInput, Skeleton, TextInput, Toggle } from "@devdigest/ui";
 import type { Skill, SkillType } from "@devdigest/shared";
 import { AppShell } from "../../../../components/app-shell";
 import { useCreateSkill, useSkill, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { useToast } from "../../../../lib/toast";
 import { TYPE_OPTIONS } from "../SkillsListView/constants";
+import { MarkdownSplit } from "./_components/MarkdownSplit";
 import { s } from "./styles";
 
 type Mode = { mode: "create" } | { mode: "edit"; skillId: string };
@@ -113,7 +114,7 @@ export function SkillEditor(props: Mode) {
           <Toggle on={enabled} onChange={setEnabled} size={16} />
         </FormField>
         <FormField label={t("editor.body")}>
-          <Textarea value={body} onChange={setBody} rows={16} mono placeholder={t("editor.bodyPlaceholder")} />
+          <MarkdownSplit value={body} onChange={setBody} ariaLabel={t("editor.body")} />
         </FormField>
 
         <div style={s.actions}>
