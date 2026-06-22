@@ -198,4 +198,51 @@ d('skills module', () => {
     expect(versions).toHaveLength(0);
     await app.close();
   });
+
+  it('GET /skills/:id/usage returns the agent count linked to the skill', async () => {
+    const app = await makeApp();
+    const { db } = pg.handle;
+
+    const skillId = (
+      await app.inject({ method: 'POST', url: '/skills', payload: createBody })
+    ).json().id as string;
+
+    let res = await app.inject({ method: 'GET', url: `/skills/${skillId}/usage` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ agent_count: 0 });
+
+    const agentRepo = new AgentsRepository(db);
+    const [{ id: wsId }] = await db
+      .select({ id: t.workspaces.id })
+      .from(t.workspaces)
+      .where(eq(t.workspaces.name, 'default'));
+    const a1 = await agentRepo.insert({
+      workspaceId: wsId!,
+      name: 'A1',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      systemPrompt: 'x',
+    });
+    const a2 = await agentRepo.insert({
+      workspaceId: wsId!,
+      name: 'A2',
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      systemPrompt: 'x',
+    });
+    await agentRepo.linkSkill(a1.id, skillId, 0);
+    await agentRepo.linkSkill(a2.id, skillId, 0);
+
+    res = await app.inject({ method: 'GET', url: `/skills/${skillId}/usage` });
+    expect(res.json()).toEqual({ agent_count: 2 });
+    await app.close();
+  });
+
+  it('GET /skills/:id/usage 404s for an unknown id', async () => {
+    const app = await makeApp();
+    const ghost = '00000000-0000-0000-0000-000000000000';
+    const res = await app.inject({ method: 'GET', url: `/skills/${ghost}/usage` });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
 });

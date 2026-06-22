@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
@@ -125,5 +125,18 @@ export class SkillsRepository {
       .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
       .returning({ id: t.skills.id });
     return rows.length > 0;
+  }
+
+  async usage(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ agentCount: number } | undefined> {
+    const skill = await this.getById(workspaceId, id);
+    if (!skill) return undefined;
+    const [row] = await this.db
+      .select({ c: count() })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.skillId, id));
+    return { agentCount: row?.c ?? 0 };
   }
 }

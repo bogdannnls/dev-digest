@@ -49,6 +49,13 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     return skill;
   });
 
+  app.get('/skills/:id/usage', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const u = await service.usage(workspaceId, req.params.id);
+    if (!u) throw new NotFoundError('Skill not found');
+    return u;
+  });
+
   app.post('/skills', { schema: { body: CreateSkillBody } }, async (req, reply) => {
     const { workspaceId } = await getContext(app.container, req);
     const skill = await service.create(workspaceId, req.body);

@@ -65,4 +65,12 @@ export class SkillsService {
   async delete(workspaceId: string, id: string): Promise<boolean> {
     return this.repo.deleteById(workspaceId, id);
   }
+
+  async usage(
+    workspaceId: string,
+    id: string,
+  ): Promise<{ agent_count: number } | undefined> {
+    const u = await this.repo.usage(workspaceId, id);
+    return u ? { agent_count: u.agentCount } : undefined;
+  }
 }
