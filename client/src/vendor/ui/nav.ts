@@ -11,6 +11,8 @@ export interface NavItemDef {
   /** Optional g-nav shortcut suffix (e.g. "p" → g then p). */
   gKey?: string;
   badge?: string;
+  /** When true, render as a non-interactive placeholder (route not yet built). */
+  disabled?: boolean;
 }
 
 export interface NavGroup {
@@ -18,12 +20,34 @@ export interface NavGroup {
   items: NavItemDef[];
 }
 
+/* Sections and item order mirror docs/DevDigest Design (standalone).html.
+   Items without a built route carry `disabled: true` — they render as
+   visible scaffolding so the shell matches the design without dead links. */
 export const NAV: NavGroup[] = [
   {
     section: "WORKSPACE",
     items: [
       { key: "pulls", label: "Pull Requests", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
+      { key: "onboarding-tour", label: "Onboarding Tour", icon: "Workflow", href: "#", disabled: true },
+      { key: "context", label: "Project Context", icon: "Folder", href: "#", disabled: true },
+    ],
+  },
+  {
+    section: "SKILLS LAB",
+    items: [
+      { key: "skills", label: "Skills", icon: "Sparkles", href: "#", disabled: true },
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
+      { key: "conventions", label: "Conventions", icon: "ListChecks", href: "#", disabled: true },
+      { key: "eval", label: "Eval Dashboard", icon: "Target", href: "#", disabled: true },
+    ],
+  },
+  {
+    section: "GLOBAL",
+    items: [
+      { key: "memory", label: "Memory", icon: "Brain", href: "#", disabled: true },
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "#", disabled: true },
+      { key: "agent-performance", label: "Agent Performance", icon: "TrendingUp", href: "#", disabled: true },
+      { key: "ci-runs", label: "CI Runs", icon: "Boxes", href: "#", disabled: true },
     ],
   },
 ];
