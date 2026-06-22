@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
@@ -8,6 +9,9 @@ import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
 import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
+
+const VALID_SEVERITIES = new Set(["CRITICAL", "WARNING", "SUGGESTION"] as const);
+type ValidSeverity = "CRITICAL" | "WARNING" | "SUGGESTION";
 
 interface FindingsTabProps {
   prId: string | null;
@@ -41,6 +45,23 @@ export function FindingsTab({
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  const searchParams = useSearchParams();
+  // 'CRITICAL' | 'WARNING' | 'SUGGESTION' | null — driven by ?severity= deep-link from FindingsCell
+  const raw = searchParams.get("severity");
+  const severityFilter: ValidSeverity | null =
+    raw && VALID_SEVERITIES.has(raw as ValidSeverity) ? (raw as ValidSeverity) : null;
+
+  // Scroll-to-anchor on mount when the hash matches a known finding.
+  // Runs whenever the rendered finding count changes (i.e., after the list renders).
+  const totalFindings = runs.reduce((sum, r) => sum + r.findings.length, 0);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash; // '#finding-<id>'
+    if (!hash.startsWith("#finding-")) return;
+    const el = document.getElementById(hash.slice(1));
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [totalFindings]);
+
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -164,6 +185,7 @@ export function FindingsTab({
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
+            severityFilter={severityFilter}
           />
         ))
       )}

@@ -154,6 +154,26 @@ export type Repo = z.infer<typeof Repo>;
 export const PrStatus = z.enum(['needs_review', 'reviewed', 'stale', 'open', 'closed', 'merged']);
 export type PrStatus = z.infer<typeof PrStatus>;
 
+const FindingTitle = z.object({
+  id: z.string(),
+  title: z.string(),
+});
+const SeverityBucket = z.object({
+  count: z.number().int().nonnegative(),
+  titles: z.array(FindingTitle),
+});
+
+/**
+ * Zero-state findings shape used by producers that don't have findings data
+ * (e.g., GitHub adapters returning raw PR metadata). Route handlers overwrite
+ * with real data when present.
+ */
+export const emptyFindingsBuckets = () => ({
+  CRITICAL: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+  WARNING: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+  SUGGESTION: { count: 0, titles: [] as Array<{ id: string; title: string }> },
+});
+
 export const PrMeta = z.object({
   id: z.string().nullish(),
   number: z.number().int(),
@@ -170,6 +190,11 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  findings: z.object({
+    CRITICAL: SeverityBucket,
+    WARNING: SeverityBucket,
+    SUGGESTION: SeverityBucket,
+  }),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 
