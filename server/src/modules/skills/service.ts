@@ -61,4 +61,8 @@ export class SkillsService {
     const row = await this.repo.update(workspaceId, id, patch);
     return row ? toSkillDto(row) : undefined;
   }
+
+  async delete(workspaceId: string, id: string): Promise<boolean> {
+    return this.repo.deleteById(workspaceId, id);
+  }
 }

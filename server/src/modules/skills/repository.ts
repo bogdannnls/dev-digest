@@ -118,4 +118,12 @@ export class SkillsRepository {
       return row;
     });
   }
+
+  async deleteById(workspaceId: string, id: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+      .returning({ id: t.skills.id });
+    return rows.length > 0;
+  }
 }
