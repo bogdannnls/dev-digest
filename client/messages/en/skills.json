@@ -1,101 +1,73 @@
 {
-  "page": {
-    "crumbLab": "Skills Lab",
-    "crumbSkills": "Skills",
-    "heading": "Skills",
-    "addSkill": "Add Skill",
-    "searchPlaceholder": "Search skills…",
-    "loadError": "Could not load skills.",
-    "menu": {
-      "fromFile": "Import from file",
-      "fromUrl": "Import from URL",
-      "community": "Search community skills…"
-    },
-    "empty": {
-      "title": "No skills yet",
-      "body": "Import a skill from a file, a URL, or the community catalog.",
-      "cta": "Import from file"
-    },
-    "selectPrompt": {
-      "title": "Select a skill",
-      "body": "Pick a skill on the left to preview its body."
-    }
+  "card": {
+    "noDescription": "No description",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
-  "detail": {
-    "crumbSkill": "Skill",
-    "back": "← All skills",
-    "loadError": "Could not load this skill.",
-    "notFound": {
-      "title": "Skill not found",
-      "body": "It may have been deleted."
-    }
+  "list": {
+    "breadcrumbLab": "Skills Lab",
+    "breadcrumb": "Skills",
+    "title": "Skills",
+    "subtitle": "Reusable review instructions. Each skill is a directive your agents can include in their prompt.",
+    "searchPlaceholder": "Search skills…",
+    "filterByType": "Type",
+    "addSkill": "Add Skill",
+    "createFromScratch": "Create",
+    "importFromFile": "Import",
+    "importComingSoon": "Coming soon",
+    "loadError": "Could not load skills.",
+    "emptyTitle": "No skills yet",
+    "emptyBody": "A skill is a directive — a piece of guidance your agents can include in their prompt. Create one to start.",
+    "emptyCta": "Create your first skill",
+    "noMatchTitle": "No skills match",
+    "noMatchBody": "Try clearing the search or adjusting the type filter.",
+    "noMatchCta": "Clear filters"
+  },
+  "types": {
+    "rubric": "Rubric",
+    "convention": "Convention",
+    "security": "Security",
+    "custom": "Custom"
   },
   "drawer": {
-    "title": "Add a skill",
-    "subtitle": "Import from a file, a URL, or search vetted community skills",
-    "tabs": {
-      "file": "From file",
-      "url": "From URL",
-      "community": "Community"
-    },
-    "importFailed": "Import failed"
-  },
-  "file": {
-    "nameLabel": "Skill name",
-    "nameHint": "Optional — derived from the first heading if blank.",
-    "namePlaceholder": "pr-quality-rubric",
-    "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Pasted content is wrapped as untrusted data — never executed as instructions.",
-    "bodyPlaceholder": "# Rule\nDescribe the rule…",
-    "importing": "Importing…",
-    "import": "Import skill",
-    "success": "Imported \"{name}\" (stored as untrusted data)."
-  },
-  "url": {
-    "label": "Skill URL",
-    "hint": "Fetched server-side, stored as untrusted, and left disabled until vetted.",
-    "placeholder": "https://example.com/skills/security.md",
-    "fetching": "Fetching…",
-    "import": "Import from URL",
-    "success": "Imported \"{name}\". Disabled until you vet + enable it."
-  },
-  "community": {
-    "searchPlaceholder": "Search community skills (e.g. security)…",
-    "allLanguages": "All languages",
-    "loadError": "Could not load community skills",
-    "retry": "Retry",
-    "noMatch": {
-      "title": "No matching skills",
-      "body": "Try a different search term."
-    },
-    "importing": "Importing…",
-    "import": "Import"
-  },
-  "listItem": {
-    "needsVetting": "needs vetting",
-    "vettingTitle": "Untrusted source — vet before enabling",
-    "type": {
-      "rubric": "rubric",
-      "convention": "convention",
-      "security": "security",
-      "custom": "custom"
-    },
-    "source": {
-      "manual": "Manual",
-      "extracted": "Extracted",
-      "community": "Community",
-      "imported_url": "Imported"
-    }
-  },
-  "preview": {
-    "untrustedBadge": "untrusted source",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
-    "save": "Save",
     "edit": "Edit",
-    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
-    "bodyLabel": "Skill body (Markdown)",
-    "bodyHint": "Saving a changed body creates a new immutable version.",
-    "version": "v{version}"
+    "deleteMenu": "Delete…",
+    "closeAria": "Close preview",
+    "enabledLabel": "Enabled"
+  },
+  "delete": {
+    "title": "Delete skill?",
+    "bodyZero": "Delete \"{name}\". This cannot be undone.",
+    "bodyN": "Delete \"{name}\". Used by {count} agents. This will remove it from those agents and delete its history.",
+    "cancel": "Cancel",
+    "confirm": "Delete skill",
+    "deleting": "Deleting…"
+  },
+  "editor": {
+    "loadErrorTitle": "Couldn't load this skill",
+    "loadErrorBody": "The skill could not be loaded.",
+    "createTitle": "Create skill",
+    "createSubtitle": "Describe what this skill checks and how an agent should use it.",
+    "editTitle": "Edit skill",
+    "name": "Name",
+    "namePlaceholder": "secret-leakage-gate",
+    "description": "Description",
+    "descriptionHint": "Acts as the skill's interface — phrase it as a directive.",
+    "descriptionPlaceholder": "Flag any secret value committed to the repo.",
+    "type": "Type",
+    "enabled": "Enabled",
+    "body": "Body (markdown)",
+    "bodyPlaceholder": "## When to flag\n\n- Any string that looks like an API key…",
+    "previewToggle": "Preview",
+    "save": "Save skill",
+    "create": "Create skill",
+    "saving": "Saving…",
+    "creating": "Creating…",
+    "saved": "Saved (v{version})",
+    "savedToast": "Skill saved (v{version})",
+    "unsavedTitle": "Discard changes?",
+    "unsavedBody": "You have unsaved edits. Leave the page anyway?",
+    "unsavedConfirm": "Discard",
+    "unsavedCancel": "Keep editing"
   }
 }
