@@ -5,13 +5,17 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
-import { useSkills } from "../../../../lib/hooks/skills";
+import { useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
+import { SkillCard } from "./_components/SkillCard";
 import { s } from "./styles";
 
 export function SkillsListView() {
   const t = useTranslations("skills");
   const router = useRouter();
   const { data: skills, isLoading, isError, refetch } = useSkills();
+  const update = useUpdateSkill();
+
+  const hasSkills = (skills?.length ?? 0) > 0;
 
   return (
     <AppShell crumb={[{ label: t("list.breadcrumbLab") }, { label: t("list.breadcrumb") }]}>
@@ -31,7 +35,7 @@ export function SkillsListView() {
           </div>
         )}
         {isError && <ErrorState body={t("list.loadError")} onRetry={() => refetch()} />}
-        {!isLoading && !isError && (skills?.length ?? 0) === 0 && (
+        {!isLoading && !isError && !hasSkills && (
           <EmptyState
             icon="Sparkles"
             title={t("list.emptyTitle")}
@@ -39,6 +43,18 @@ export function SkillsListView() {
             cta={t("list.emptyCta")}
             onCta={() => router.push("/skills/new")}
           />
+        )}
+        {hasSkills && (
+          <div style={s.grid}>
+            {skills!.map((sk) => (
+              <SkillCard
+                key={sk.id}
+                skill={sk}
+                onClick={() => {/* drawer wiring in Task 12 */}}
+                onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
+              />
+            ))}
+          </div>
         )}
       </div>
     </AppShell>
