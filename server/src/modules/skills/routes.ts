@@ -25,6 +25,14 @@ const CreateSkillBody = z.object({
   enabled: z.boolean().optional(),
 });
 
+const UpdateSkillBody = z.object({
+  name: z.string().min(1).max(120).optional(),
+  description: z.string().max(500).optional(),
+  type: SkillType.optional(),
+  body: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+});
+
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = new SkillsService(app.container);
@@ -47,4 +55,15 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     reply.status(201);
     return skill;
   });
+
+  app.put(
+    '/skills/:id',
+    { schema: { params: IdParams, body: UpdateSkillBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const skill = await service.update(workspaceId, req.params.id, req.body);
+      if (!skill) throw new NotFoundError('Skill not found');
+      return skill;
+    },
+  );
 }

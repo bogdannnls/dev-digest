@@ -16,6 +16,14 @@ export interface CreateSkillInput {
   enabled?: boolean;
 }
 
+export interface UpdateSkillInput {
+  name?: string;
+  description?: string;
+  type?: SkillType;
+  body?: string;
+  enabled?: boolean;
+}
+
 export class SkillsService {
   private repo: SkillsRepository;
 
@@ -43,5 +51,14 @@ export class SkillsService {
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     });
     return toSkillDto(row);
+  }
+
+  async update(
+    workspaceId: string,
+    id: string,
+    patch: UpdateSkillInput,
+  ): Promise<Skill | undefined> {
+    const row = await this.repo.update(workspaceId, id, patch);
+    return row ? toSkillDto(row) : undefined;
   }
 }

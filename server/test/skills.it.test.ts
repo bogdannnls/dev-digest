@@ -92,4 +92,46 @@ d('skills module', () => {
     expect(res.statusCode).toBe(422);
     await app.close();
   });
+
+  it('PUT /skills/:id bumps version when body changes', async () => {
+    const app = await makeApp();
+    const id = (
+      await app.inject({ method: 'POST', url: '/skills', payload: createBody })
+    ).json().id as string;
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/skills/${id}`,
+      payload: { body: 'new body' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ body: 'new body', version: 2 });
+    await app.close();
+  });
+
+  it('PUT /skills/:id does NOT bump version when only enabled changes', async () => {
+    const app = await makeApp();
+    const id = (
+      await app.inject({ method: 'POST', url: '/skills', payload: createBody })
+    ).json().id as string;
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/skills/${id}`,
+      payload: { enabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ enabled: false, version: 1 });
+    await app.close();
+  });
+
+  it('PUT /skills/:id 404s for an unknown skill', async () => {
+    const app = await makeApp();
+    const ghost = '00000000-0000-0000-0000-000000000000';
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/skills/${ghost}`,
+      payload: { name: 'x' },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
 });

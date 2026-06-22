@@ -4,6 +4,7 @@ import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
 import { AppError } from '../../platform/errors.js';
 import { DEFAULT_SKILL_DESCRIPTION, INITIAL_SKILL_VERSION } from './constants.js';
+import { isContentChange } from './helpers.js';
 
 /**
  * Skills data-access. Owns the `skills` and `skill_versions` tables.
@@ -21,6 +22,14 @@ export interface InsertSkill {
   enabled?: boolean;
   source?: SkillSource;
   evidenceFiles?: string[] | null;
+}
+
+export interface UpdateSkill {
+  name?: string;
+  description?: string;
+  type?: SkillType;
+  body?: string;
+  enabled?: boolean;
 }
 
 export class SkillsRepository {
@@ -66,6 +75,42 @@ export class SkillsRepository {
         version: INITIAL_SKILL_VERSION,
         body: row.body,
       });
+      return row;
+    });
+  }
+
+  async update(
+    workspaceId: string,
+    id: string,
+    patch: UpdateSkill,
+  ): Promise<SkillRow | undefined> {
+    const existing = await this.getById(workspaceId, id);
+    if (!existing) return undefined;
+
+    const contentChanged = isContentChange(existing, patch);
+    const nextVersion = contentChanged ? existing.version + 1 : existing.version;
+
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(t.skills)
+        .set({
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.description !== undefined ? { description: patch.description } : {}),
+          ...(patch.type !== undefined ? { type: patch.type } : {}),
+          ...(patch.body !== undefined ? { body: patch.body } : {}),
+          ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+          ...(contentChanged ? { version: nextVersion } : {}),
+        })
+        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+        .returning();
+
+      if (contentChanged && row) {
+        await tx.insert(t.skillVersions).values({
+          skillId: row.id,
+          version: nextVersion,
+          body: row.body,
+        });
+      }
       return row;
     });
   }
