@@ -38,6 +38,10 @@ Each package has its own `CLAUDE.md` — read it before working there.
 - `skills-lock.json` — managed by tooling.
 - `.github/workflows/*` — change only with explicit intent; CI is path-filtered per package.
 
+## Pre-ready architectural check
+
+Before marking work ready, if the diff touches `client/` or `server/`, run `/pr-self-review`. Treat MUST findings as blockers (propose a fix, ask before applying). SHOULD findings are advisory — include them in the final summary. If the workflow reports `partial: true`, do not claim ready until it can run cleanly.
+
 ## Where to look
 - Test philosophy + suite map: [TESTING.md](TESTING.md)
 - Deep dives: [docs/](docs/)
