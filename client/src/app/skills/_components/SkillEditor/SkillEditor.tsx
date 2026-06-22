@@ -73,12 +73,18 @@ export function SkillEditor(props: Mode) {
     if (isEdit) {
       update.mutate(
         { id: props.skillId, patch: { name, description, type, body, enabled } },
-        { onSuccess: (data) => toast.success(t("editor.savedToast", { version: data.version })) },
+        {
+          onSuccess: (data) => toast.success(t("editor.savedToast", { version: data.version })),
+          onError: () => toast.error(t("editor.saveError")),
+        },
       );
     } else {
       create.mutate(
         { name, description, type, body, enabled },
-        { onSuccess: (data) => router.push(`/skills/${data.id}`) },
+        {
+          onSuccess: (data) => router.push(`/skills/${data.id}`),
+          onError: () => toast.error(t("editor.saveError")),
+        },
       );
     }
   };
@@ -87,7 +93,7 @@ export function SkillEditor(props: Mode) {
     <AppShell crumb={crumb}>
       <div style={s.page}>
         <h1 style={s.h1}>{isEdit ? t("editor.editTitle") : t("editor.createTitle")}</h1>
-        <p style={s.subtitle}>{t("editor.createSubtitle")}</p>
+        {!isEdit && <p style={s.subtitle}>{t("editor.createSubtitle")}</p>}
 
         <FormField label={t("editor.name")} required>
           <TextInput value={name} onChange={setName} placeholder={t("editor.namePlaceholder")} mono />

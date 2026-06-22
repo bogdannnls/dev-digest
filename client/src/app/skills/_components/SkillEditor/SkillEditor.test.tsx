@@ -28,6 +28,10 @@ vi.mock("../../../../lib/hooks/skills", () => {
             // Cast to any to bypass TypeScript's overly strict option handling
             (options.onSuccess as Function)(result);
           }
+        }).catch(() => {
+          if (options?.onError) {
+            (options.onError as Function)();
+          }
         });
       },
       isPending: false,
@@ -40,7 +44,7 @@ vi.mock("../../../../lib/hooks/skills", () => {
   };
 });
 
-vi.mock("../../../../lib/toast", () => ({ useToast: () => ({ success: vi.fn() }) }));
+vi.mock("../../../../lib/toast", () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn() }) }));
 
 function wrap(node: React.ReactNode) {
   const qc = new QueryClient();
@@ -58,16 +62,16 @@ describe("SkillEditor (create mode)", () => {
     render(wrap(<SkillEditor mode="create" />));
     const createButton = screen.getByRole("button", { name: /Create skill/i });
     expect(createButton).toBeDisabled();
-    await userEvent.type(screen.getByPlaceholderText("secret-leakage-gate"), "secret-leakage-gate");
+    await userEvent.type(screen.getByRole("textbox", { name: /Name/i }), "secret-leakage-gate");
     expect(createButton).toBeDisabled();
-    await userEvent.type(screen.getByPlaceholderText(/## When to flag/), "body");
+    await userEvent.type(screen.getByRole("textbox", { name: /Body/i }), "body");
     expect(createButton).toBeEnabled();
   });
 
   it("submits + navigates to the new skill's edit route", async () => {
     render(wrap(<SkillEditor mode="create" />));
-    await userEvent.type(screen.getByPlaceholderText("secret-leakage-gate"), "x");
-    await userEvent.type(screen.getByPlaceholderText(/## When to flag/), "body");
+    await userEvent.type(screen.getByRole("textbox", { name: /Name/i }), "x");
+    await userEvent.type(screen.getByRole("textbox", { name: /Body/i }), "body");
     await userEvent.click(screen.getByRole("button", { name: /Create skill/i }));
     await waitFor(() => expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: "x", body: "body", type: "custom" })));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/skills/new-id"));
