@@ -17,9 +17,16 @@ export function SkillCard({
 }) {
   const t = useTranslations("skills");
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
       aria-label={skill.name}
       style={s.card(skill.enabled)}
     >
@@ -35,6 +42,6 @@ export function SkillCard({
       <div style={s.description}>
         {skill.description || t("card.noDescription")}
       </div>
-    </button>
+    </div>
   );
 }

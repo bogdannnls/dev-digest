@@ -50,7 +50,6 @@ export function SkillsListView() {
               <SkillCard
                 key={sk.id}
                 skill={sk}
-                onClick={() => {/* drawer wiring in Task 12 */}}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
               />
             ))}
