@@ -39,7 +39,7 @@ Out of this spec, deliberately:
 | 3 | Markdown body editor | Plain `<Textarea mono />` on the left + `react-markdown` preview on the right | User picked split-with-preview over plain textarea. `react-markdown` is already vendored for the PR Brief and Compose Review surfaces. |
 | 4 | List-card click behaviour | Open a right-side drawer (~480px) with read-only preview + "Edit" button + kebab → Delete | Matches the "click → preview" pattern requested. Editing is one click away on a dedicated route. |
 | 5 | "Add" button affordance | Button with dropdown caret now — "Create" enabled, "Import" disabled with "Coming soon" tooltip | Final shape of the affordance ships immediately; the dead menu item is acceptable cost until Spec C lands and removes the tooltip. |
-| 6 | Versioning behaviour | Bump `version` and insert into `skill_versions` on every update; show `Saved (vN)` inline. No history viewer yet. | Matches the agent editor pattern (`useUpdateAgent` returns `{ version }`). The history rows are written so future history UI has data to render. |
+| 6 | Versioning behaviour | Bump `version` and insert into `skill_versions` only when a content field (`name` / `description` / `type` / `body`) changes; toggling `enabled` does NOT bump. Show `Saved (vN)` inline. No history viewer yet. | Mirrors the agents pattern (`isConfigChange` in `modules/agents/helpers.ts`) — enable/disable shouldn't pollute history. The agent editor surfaces this same way via `Saved (vN)`. |
 | 7 | Delete behaviour | Hard delete with cascade + confirm dialog showing "Used by N agents" | The schema already cascades `skill_versions` (skills.ts:23) and `agent_skills` (agents.ts:59). A confirm dialog with usage count is enough friction. |
 | 8 | List toolbar | Search-by-name (debounced, client-side) + multi-select type filter chips + Add button | Skill counts are small (single digits in dev, dozens at scale); client-side filtering is cheap and avoids server-side query plumbing. |
 | 9 | Unique skill name | Not enforced; no UI warning either | Users may want forked variants of the same skill. v1 is silent on collisions; revisit if it bites in practice. |
@@ -93,9 +93,11 @@ GET    /skills              → list (workspace-scoped, ordered by created_at de
 GET    /skills/:id          → one                                                    200 / 404
 GET    /skills/:id/usage    → { agent_count: number }                                200 / 404
 POST   /skills              → CreateBody                                             201
-PATCH  /skills/:id          → UpdateBody (partial)                                   200
-DELETE /skills/:id          → no body                                                204
+PUT    /skills/:id          → UpdateBody (partial)                                   200 / 404
+DELETE /skills/:id          → { ok: true }                                           200 / 404
 ```
+
+`PUT` (not `PATCH`) and `{ ok: true }` body on delete match the conventions established by the agents module.
 
 ### Zod schemas at the route boundary
 
@@ -118,9 +120,8 @@ const IdParams   = z.object({ id: z.string().uuid() });
 ### Wire-up
 
 - Register `skillsModule` in `server/src/modules/index.ts`.
-- Add DI registration in `server/src/platform/container.ts`.
-- Add a shared contract at `server/src/vendor/shared/contracts/skill.ts` (`Skill`, `SkillType`, `SkillSource`) — client and server share one source of truth; the agents module does this already.
-- Export the contract from `server/src/vendor/shared/index.ts` and mirror in `client/src/vendor/shared/`.
+- DI: the agents module instantiates its repo inline (`new AgentsRepository(container.db)`) and only exposes a `container.agentsRepo` getter because other modules consume it. Skills has no cross-module consumers in Spec A, so the service instantiates its repo inline and we add no container getter.
+- The shared contracts `Skill`, `SkillType`, `SkillSource` already exist in [server/src/vendor/shared/contracts/knowledge.ts](../../../server/src/vendor/shared/contracts/knowledge.ts) (lines 114-132) and are mirrored in the client. **No new contract file is needed.** Service and routes import `Skill`, `SkillType` from `@devdigest/shared` directly.
 
 ### Client routes (new): `client/src/app/skills/`
 
@@ -151,16 +152,17 @@ src/app/skills/
   new/page.tsx                                # reuses SkillEditor in 'create' mode
 
 src/lib/hooks/skills.ts                       # useSkills / useSkill / useCreateSkill / useUpdateSkill / useDeleteSkill / useSkillUsage
-src/vendor/shared/contracts/skill.ts          # mirror of server contract
 ```
+
+The `Skill` / `SkillType` contracts already exist in `client/src/vendor/shared/contracts/knowledge.ts` — no new contract file is needed.
 
 ### Touched client files
 
 ```
-src/lib/api.ts                                # add skills endpoints
-src/components/app-shell/helpers.ts           # ensure 'Skills' nav links to /skills (if not already)
-messages/en.json (+ uk.json if present)       # skills.* i18n keys
-src/vendor/shared/index.ts                    # export skill contract
+src/lib/api.ts                                # nothing to change; lib/hooks/skills.ts uses the existing `api` helper
+client/src/vendor/ui/nav.ts                   # add `Skills` nav item under WORKSPACE (or new SKILLS LAB group)
+src/components/app-shell/helpers.ts:1812      # activeKeyFor() already recognises /skills (line 1819)
+client/messages/en/skills.json                # new namespace file (mirrors structure of en/agents.json)
 ```
 
 ## Components & data flow
