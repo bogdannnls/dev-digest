@@ -9,6 +9,7 @@ import { AppShell } from "../../../../components/app-shell";
 import { useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "./_components/SkillCard";
 import { SkillsToolbar } from "./_components/SkillsToolbar";
+import { SkillPreviewDrawer } from "./_components/SkillPreviewDrawer";
 import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
@@ -19,6 +20,8 @@ export function SkillsListView() {
   const update = useUpdateSkill();
   const [query, setQuery] = React.useState("");
   const [types, setTypes] = React.useState<Set<SkillType>>(new Set());
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<string | null>(null);
 
   const hasSkills = (skills?.length ?? 0) > 0;
   const visible = filterSkills(skills ?? [], query, types);
@@ -69,12 +72,21 @@ export function SkillsListView() {
               <SkillCard
                 key={sk.id}
                 skill={sk}
+                onClick={() => setSelectedId(sk.id)}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
               />
             ))}
           </div>
         )}
       </div>
+      {selectedId && (
+        <SkillPreviewDrawer
+          skillId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onEdit={(id) => router.push(`/skills/${id}`)}
+          onDeleteRequest={(id) => setPendingDelete(id)}
+        />
+      )}
     </AppShell>
   );
 }
