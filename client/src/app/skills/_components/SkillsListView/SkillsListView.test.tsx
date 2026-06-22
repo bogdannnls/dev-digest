@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { SkillsListView } from "./SkillsListView";
@@ -57,5 +58,22 @@ describe("SkillsListView", () => {
     vi.mocked(skillsHooks.useSkills).mockReturnValueOnce({ data: [ONE], isLoading: false, isError: false } as any);
     render(wrap(<SkillsListView />));
     expect(screen.getByText("secret-leakage-gate")).toBeInTheDocument();
+  });
+
+  it("filters the grid by search query", async () => {
+    vi.mocked(skillsHooks.useSkills).mockReturnValue({
+      data: [
+        { ...ONE, id: "1", name: "secret-leakage-gate" },
+        { ...ONE, id: "2", name: "pr-quality-rubric", type: "rubric" },
+      ],
+      isLoading: false,
+      isError: false,
+    } as any);
+
+    render(wrap(<SkillsListView />));
+    expect(screen.getByText("secret-leakage-gate")).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText(/Search skills/), "rubric");
+    expect(screen.queryByText("secret-leakage-gate")).not.toBeInTheDocument();
+    expect(screen.getByText("pr-quality-rubric")).toBeInTheDocument();
   });
 });

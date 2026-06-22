@@ -4,9 +4,12 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { EmptyState, ErrorState, Skeleton } from "@devdigest/ui";
+import type { SkillType } from "@devdigest/shared";
 import { AppShell } from "../../../../components/app-shell";
 import { useSkills, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { SkillCard } from "./_components/SkillCard";
+import { SkillsToolbar } from "./_components/SkillsToolbar";
+import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
 export function SkillsListView() {
@@ -14,8 +17,12 @@ export function SkillsListView() {
   const router = useRouter();
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const update = useUpdateSkill();
+  const [query, setQuery] = React.useState("");
+  const [types, setTypes] = React.useState<Set<SkillType>>(new Set());
 
   const hasSkills = (skills?.length ?? 0) > 0;
+  const visible = filterSkills(skills ?? [], query, types);
+  const filteredOut = hasSkills && visible.length === 0;
 
   return (
     <AppShell crumb={[{ label: t("list.breadcrumbLab") }, { label: t("list.breadcrumb") }]}>
@@ -45,8 +52,20 @@ export function SkillsListView() {
           />
         )}
         {hasSkills && (
+          <SkillsToolbar query={query} onQuery={setQuery} types={types} onTypes={setTypes} />
+        )}
+        {filteredOut && (
+          <EmptyState
+            icon="Search"
+            title={t("list.noMatchTitle")}
+            body={t("list.noMatchBody")}
+            cta={t("list.noMatchCta")}
+            onCta={() => { setQuery(""); setTypes(new Set()); }}
+          />
+        )}
+        {visible.length > 0 && (
           <div style={s.grid}>
-            {skills!.map((sk) => (
+            {visible.map((sk) => (
               <SkillCard
                 key={sk.id}
                 skill={sk}
