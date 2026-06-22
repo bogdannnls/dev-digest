@@ -16,7 +16,6 @@ export const s = {
     borderBottom: "1px solid var(--border)",
   } as CSSProperties,
   split: { display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: 320 } as CSSProperties,
-  splitSolo: { display: "block" } as CSSProperties,
   pane: { padding: 12, fontSize: 13, lineHeight: 1.55, overflow: "auto" } as CSSProperties,
   textarea: {
     width: "100%",

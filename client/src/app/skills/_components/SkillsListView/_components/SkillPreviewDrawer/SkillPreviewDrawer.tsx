@@ -2,8 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import ReactMarkdown from "react-markdown";
-import { Button, Dropdown, Icon, Toggle } from "@devdigest/ui";
+import { Button, Dropdown, Icon, Markdown, Toggle } from "@devdigest/ui";
 import { useSkill, useUpdateSkill } from "../../../../../../lib/hooks/skills";
 import { s } from "./styles";
 
@@ -60,7 +59,7 @@ export function SkillPreviewDrawer({
         <div style={s.body}>
           {skill.description && <p style={s.description}>{skill.description}</p>}
           <div style={s.markdown}>
-            <ReactMarkdown>{skill.body}</ReactMarkdown>
+            <Markdown>{skill.body}</Markdown>
           </div>
         </div>
         <div style={s.footer}>

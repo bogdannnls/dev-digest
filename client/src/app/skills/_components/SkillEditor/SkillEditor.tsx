@@ -114,7 +114,7 @@ export function SkillEditor(props: Mode) {
           <Toggle on={enabled} onChange={setEnabled} size={16} />
         </FormField>
         <FormField label={t("editor.body")}>
-          <MarkdownSplit value={body} onChange={setBody} ariaLabel={t("editor.body")} />
+          <MarkdownSplit value={body} onChange={setBody} ariaLabel={t("editor.body")} placeholder={t("editor.bodyPlaceholder")} />
         </FormField>
 
         <div style={s.actions}>
