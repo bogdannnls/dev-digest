@@ -28,7 +28,7 @@ export function RepoSwitcher({ ctx }: { ctx: ShellContext }) {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "10px 14px",
+            padding: "8px 10px",
             margin: "0 0 8px",
             borderRadius: 7,
             border: "1px solid var(--border)",
