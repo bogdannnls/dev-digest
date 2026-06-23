@@ -8,7 +8,7 @@ import type { Skill } from "@devdigest/shared";
 
 const skill: Skill = {
   id: "22222222-2222-2222-2222-222222222222",
-  name: "security-rubric",
+  name: "alpha-row",
   description: "",
   type: "security",
   source: "manual",
@@ -37,7 +37,7 @@ describe("LinkedSkillRow", () => {
         />,
       ),
     );
-    expect(screen.getByText("security-rubric")).toBeInTheDocument();
+    expect(screen.getByText("alpha-row")).toBeInTheDocument();
     expect(screen.getByText(/security/i)).toBeInTheDocument();
   });
 
@@ -52,7 +52,7 @@ describe("LinkedSkillRow", () => {
         />,
       ),
     );
-    const cb = screen.getByRole("checkbox", { name: /security-rubric/i });
+    const cb = screen.getByRole("checkbox", { name: /alpha-row/i });
     expect(cb).not.toBeChecked();
   });
 
@@ -68,7 +68,7 @@ describe("LinkedSkillRow", () => {
         />,
       ),
     );
-    await userEvent.click(screen.getByRole("checkbox", { name: /security-rubric/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /alpha-row/i }));
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 
