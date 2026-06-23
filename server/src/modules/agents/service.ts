@@ -8,6 +8,10 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
+import { reviewPullRequest } from '@devdigest/reviewer-core';
+import { NotFoundError } from '../../platform/errors.js';
+import type { SkillsEvalResult, SkillsEvalSide } from '../../vendor/shared/contracts/knowledge.js';
+import { loadFixture } from './eval-fixtures.js';
 import { AgentsRepository } from './repository.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
@@ -213,6 +217,56 @@ export class AgentsService {
     if (!agent) return undefined;
     await this.repo.unlinkSkill(agentId, skillId);
     return this.skillLinks(agentId);
+  }
+
+  /**
+   * A/B eval: runs reviewPullRequest twice against a packaged fixture — once with
+   * the agent's enabled skills, once without — so callers can compare quality.
+   *
+   * Returns undefined when the agent is missing in this workspace (route → 404).
+   * Throws NotFoundError when the fixture id is unknown (also surfaces as 404, but
+   * with a more specific message so the distinction is logged server-side).
+   *
+   * The two runs are sequential — provider rate limits preclude parallelism.
+   */
+  async evaluateSkillsAB(
+    workspaceId: string,
+    agentId: string,
+    fixtureId: string,
+  ): Promise<SkillsEvalResult | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+
+    const fx = loadFixture(fixtureId);
+    if (!fx) throw new NotFoundError(`Fixture "${fixtureId}" not found`);
+
+    const skillBodies = await this.loadEnabledSkillBodies(agentId);
+    const llm = await this.container.llm(agent.provider as Provider);
+
+    const runOnce = async (skills: string[] | undefined): Promise<SkillsEvalSide> => {
+      const outcome = await reviewPullRequest({
+        systemPrompt: agent.systemPrompt,
+        model: agent.model,
+        diff: fx.unifiedDiff,
+        llm,
+        strategy: agent.strategy ?? 'auto',
+        ...(skills && skills.length > 0 ? { skills } : {}),
+        task: `Skills A/B eval · ${fx.meta.title}`,
+        sessionId: `skills-eval:${agentId}:${fixtureId}`,
+      });
+      return {
+        findings: outcome.review.findings,
+        grounding: outcome.grounding,
+        tokensIn: outcome.tokensIn,
+        tokensOut: outcome.tokensOut,
+        costUsd: outcome.costUsd,
+      };
+    };
+
+    const with_skills = await runOnce(skillBodies);
+    const without_skills = await runOnce([]);
+
+    return { with_skills, without_skills, fixture: fx.meta };
   }
 
   /**
