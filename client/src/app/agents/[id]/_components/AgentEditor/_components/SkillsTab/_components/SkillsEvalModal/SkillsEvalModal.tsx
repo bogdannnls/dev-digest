@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { Button, Modal } from "@devdigest/ui";
 import { useEvalFixtures, useSkillsEval } from "@/lib/hooks/agents";
 import { FixturePicker } from "./_components/FixturePicker";
 import { EvalResultsSplit } from "./_components/EvalResultsSplit";
@@ -12,22 +13,20 @@ interface SkillsEvalModalProps {
   onClose: () => void;
 }
 
+const MODAL_WIDTH = 900;
+
 export function SkillsEvalModal({ agentId, open, onClose }: SkillsEvalModalProps) {
   const t = useTranslations("agents.eval");
   const { data: fixtures = [] } = useEvalFixtures();
-  const [fixtureId, setFixtureId] = useState<string | null>(null);
+  const [selectedFixtureId, setSelectedFixtureId] = useState<string | null>(null);
   const { mutate, isPending, isError, data, reset } = useSkillsEval(agentId);
 
-  useEffect(() => {
-    if (fixtureId == null && fixtures[0]) {
-      setFixtureId(fixtures[0].id);
-    }
-  }, [fixtures, fixtureId]);
+  const effectiveFixtureId = selectedFixtureId ?? fixtures[0]?.id ?? null;
 
   if (!open) return null;
 
   const run = () => {
-    if (fixtureId) mutate({ fixture_id: fixtureId });
+    if (effectiveFixtureId) mutate({ fixture_id: effectiveFixtureId });
   };
 
   const close = () => {
@@ -35,42 +34,39 @@ export function SkillsEvalModal({ agentId, open, onClose }: SkillsEvalModalProps
     onClose();
   };
 
+  const footer = isPending ? null : data || isError ? (
+    <div style={s.footer}>
+      <Button kind="ghost" onClick={close}>{t("close")}</Button>
+    </div>
+  ) : (
+    <div style={s.footer}>
+      <Button kind="ghost" onClick={close}>{t("cancel")}</Button>
+      <Button kind="primary" onClick={run} disabled={!effectiveFixtureId}>{t("run")}</Button>
+    </div>
+  );
+
   return (
-    <div style={s.overlay} role="dialog" aria-modal={true}>
-      <div style={s.dialog}>
-        <header style={s.header}>
-          <h2>{t("title")}</h2>
-          <p>{t("subtitle")}</p>
-        </header>
-        <section style={s.body}>
-          {isPending ? (
-            <div style={s.runningBox}>{t("running")}</div>
-          ) : isError ? (
-            <div style={s.errorBox}>
-              <p>{t("error")}</p>
-              <button onClick={run}>{t("retry")}</button>
-            </div>
-          ) : data ? (
-            <EvalResultsSplit result={data} />
-          ) : (
-            <FixturePicker value={fixtureId} onChange={setFixtureId} />
-          )}
-        </section>
-        {!isPending && (
-          <footer style={s.footer}>
-            {data || isError ? (
-              <button onClick={close}>{t("close")}</button>
-            ) : (
-              <>
-                <button onClick={close}>{t("cancel")}</button>
-                <button onClick={run} disabled={!fixtureId}>
-                  {t("run")}
-                </button>
-              </>
-            )}
-          </footer>
+    <Modal
+      width={MODAL_WIDTH}
+      title={t("title")}
+      subtitle={t("subtitle")}
+      onClose={close}
+      footer={footer}
+    >
+      <div style={s.body}>
+        {isPending ? (
+          <div style={s.runningBox}>{t("running")}</div>
+        ) : isError ? (
+          <div style={s.errorBox}>
+            <p>{t("error")}</p>
+            <Button kind="secondary" onClick={run}>{t("retry")}</Button>
+          </div>
+        ) : data ? (
+          <EvalResultsSplit result={data} />
+        ) : (
+          <FixturePicker value={effectiveFixtureId} onChange={setSelectedFixtureId} />
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
