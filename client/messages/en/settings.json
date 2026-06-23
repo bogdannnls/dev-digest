@@ -29,11 +29,11 @@
   },
   "models": {
     "title": "Feature Models",
-    "body": "Choose the model each system feature uses. The list and live prices come from OpenRouter; a feature falls back to its default until you pick one.",
+    "body": "Choose the provider and model each system feature uses. A feature falls back to its default until you pick one.",
     "usingDefault": "default",
     "search": "Search models…",
-    "liveNote": "Prices are pulled live from OpenRouter — USD per 1M input/output tokens.",
-    "noKeyNote": "Add an OpenRouter API key under API Keys to load the model list and prices."
+    "liveNote": "Model list and prices are pulled live from the selected provider — USD per 1M input/output tokens.",
+    "noKeyNote": "Add an API key for the selected provider under API Keys to load the model list."
   },
   "workspace": {
     "title": "Workspace",

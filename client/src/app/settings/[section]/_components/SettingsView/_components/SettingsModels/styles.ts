@@ -23,4 +23,11 @@ export const s = {
     lineHeight: 1.5,
   } satisfies CSSProperties,
   noteIcon: { flexShrink: 0, marginTop: 1 } satisfies CSSProperties,
+  pickerRow: {
+    display: "flex",
+    gap: 8,
+    alignItems: "stretch",
+  } satisfies CSSProperties,
+  providerSelect: { flexShrink: 0, width: 148 } satisfies CSSProperties,
+  modelSelect: { flex: 1, minWidth: 0 } satisfies CSSProperties,
 } as const;
