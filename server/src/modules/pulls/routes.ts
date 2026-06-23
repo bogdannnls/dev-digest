@@ -374,7 +374,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       try {
         return await gh.listReviewComments({ owner: repo.owner, name: repo.name }, pr.number);
       } catch (err) {
-        app.log.warn({ err }, 'GitHub review-comments fetch skipped (offline / error)');
+        app.log.warn({ err }, 'Forge review-comments fetch skipped (offline / error)');
         return [];
       }
     },
@@ -408,8 +408,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         });
       } catch (err) {
         // GitHub rejects comments on lines outside the diff / on closed PRs (422).
-        const msg = err instanceof Error ? err.message : 'Failed to post the comment to GitHub.';
-        throw new AppError('github_comment_failed', msg, 400, { cause: String(err) });
+        const msg = err instanceof Error ? err.message : 'Failed to post the comment to the forge provider.';
+        throw new AppError('forge_comment_failed', msg, 400, { cause: String(err) });
       }
     },
   );
