@@ -29,6 +29,60 @@
 
 ---
 
+## Test harness conventions (read before writing any *.it.test.ts file)
+
+This project does NOT use a `withTestDb(async (db, seedIds) => {...})` callback wrapper. The actual integration-test shape, used by every existing `*.it.test.ts`, is:
+
+```ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
+import { seed } from '../src/db/seed.js';
+import { buildApp } from '../src/app.js';                  // only for endpoint tests
+import { loadConfig } from '../src/platform/config.js';    // only for endpoint tests
+import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js'; // only for endpoint tests
+import * as t from '../src/db/schema.js';
+
+const hasDocker = await dockerAvailable();
+const d = hasDocker ? describe : describe.skip;
+
+if (!hasDocker) console.warn('[<suite-name>] Docker not available — skipping.');
+
+d('<suite name>', () => {
+  let pg: PgFixture;
+
+  beforeAll(async () => {
+    pg = await startPg();
+    await seed(pg.handle.db);             // seeds default workspace + system user
+  });
+  afterAll(async () => {
+    await pg?.stop();
+  });
+
+  // tests use `pg.handle.db` to access the Drizzle client.
+});
+```
+
+The default-seeded workspace id can be looked up by querying `t.workspaces` for `name = 'default'` (constant in `server/src/db/seed.ts`).
+
+For endpoint tests, build the app inside the `describe` block via:
+
+```ts
+function makeApp() {
+  const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+  return buildApp({
+    config,
+    db: pg.handle.db,
+    overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+  });
+}
+```
+
+Test snippets later in this plan are illustrative — adapt them to the shape above. The full reference is [server/test/agent-skills-enabled.it.test.ts](../../../server/test/agent-skills-enabled.it.test.ts).
+
+For endpoint tests that exercise the LLM path (Task 7), override the LLM adapter via `overrides: { llm: <capturingFake> }`. Inspect existing review tests (e.g. [server/test/reviews.it.test.ts](../../../server/test/reviews.it.test.ts)) for the fake's shape.
+
+---
+
 ## Deviations from spec
 
 The spec is approved but contains two minor under-specifications that I'm resolving in this plan:
