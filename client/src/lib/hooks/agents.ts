@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, AgentSkillLink, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type { Agent, AgentSkillLink, ModelInfo, PRFixtureMeta, Provider, ReviewStrategy, SkillsEvalResult } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -210,5 +210,21 @@ export function useSetAgentSkillEnabled(agentId: string) {
       if (ctx?.prev) qc.setQueryData(key, ctx.prev);
     },
     onSuccess: (data) => qc.setQueryData(key, data),
+  });
+}
+
+/** GET /agents/eval-fixtures — static fixture list (build-time, never stale). */
+export function useEvalFixtures() {
+  return useQuery<PRFixtureMeta[]>({
+    queryKey: ["eval-fixtures"],
+    queryFn: () => api.getEvalFixtures(),
+    staleTime: Infinity,
+  });
+}
+
+/** POST /agents/:id/skills-eval — run a skills A/B eval against a fixture. Read-only; no cache invalidation. */
+export function useSkillsEval(agentId: string) {
+  return useMutation<SkillsEvalResult, Error, { fixture_id: string }>({
+    mutationFn: ({ fixture_id }) => api.runSkillsEval(agentId, fixture_id),
   });
 }

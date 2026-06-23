@@ -2,6 +2,8 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
+import { PRFixtureMeta, SkillsEvalResult } from "@devdigest/shared";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
 
@@ -71,4 +73,20 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
+
+  async getEvalFixtures(): Promise<PRFixtureMeta[]> {
+    const res = await fetch(`${API_BASE}/agents/eval-fixtures`);
+    if (!res.ok) throw new ApiError(`${res.status} ${res.statusText}`, res.status);
+    return PRFixtureMeta.array().parse(await res.json());
+  },
+
+  async runSkillsEval(agentId: string, fixtureId: string): Promise<SkillsEvalResult> {
+    const res = await fetch(`${API_BASE}/agents/${agentId}/skills-eval`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fixture_id: fixtureId }),
+    });
+    if (!res.ok) throw new ApiError(`${res.status} ${res.statusText}`, res.status);
+    return SkillsEvalResult.parse(await res.json());
+  },
 };
