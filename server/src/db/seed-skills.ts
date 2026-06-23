@@ -93,6 +93,7 @@ export async function seedWithSkills(db: Db, workspaceId: string, userId: string
   }
 
   // ---- Links ----
+  // order: i mirrors skillsToInsert declaration order — changing that order changes the stored order.
   for (let i = 0; i < skillIds.length; i++) {
     await db
       .insert(t.agentSkills)

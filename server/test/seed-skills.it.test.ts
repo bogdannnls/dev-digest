@@ -53,6 +53,8 @@ d('seed --with-skills', () => {
       .where(eq(t.agentSkills.agentId, agent!.id));
     expect(links).toHaveLength(2);
     expect(links.every((l) => l.enabled === true)).toBe(true);
+    const sorted = [...links].sort((a, b) => a.order - b.order);
+    expect(sorted.map((l) => l.order)).toEqual([0, 1]);
   });
 
   it('seedWithSkills is idempotent', async () => {
