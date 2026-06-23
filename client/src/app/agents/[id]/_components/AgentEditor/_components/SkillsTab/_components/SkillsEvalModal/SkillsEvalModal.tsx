@@ -56,20 +56,20 @@ export function SkillsEvalModal({ agentId, open, onClose }: SkillsEvalModalProps
             <FixturePicker value={fixtureId} onChange={setFixtureId} />
           )}
         </section>
-        <footer style={s.footer}>
-          {data || isError ? (
-            <button onClick={close}>{t("close")}</button>
-          ) : isPending ? (
-            <button disabled aria-label={t("running")} />
-          ) : (
-            <>
-              <button onClick={close}>{t("cancel")}</button>
-              <button onClick={run} disabled={!fixtureId}>
-                {t("run")}
-              </button>
-            </>
-          )}
-        </footer>
+        {!isPending && (
+          <footer style={s.footer}>
+            {data || isError ? (
+              <button onClick={close}>{t("close")}</button>
+            ) : (
+              <>
+                <button onClick={close}>{t("cancel")}</button>
+                <button onClick={run} disabled={!fixtureId}>
+                  {t("run")}
+                </button>
+              </>
+            )}
+          </footer>
+        )}
       </div>
     </div>
   );

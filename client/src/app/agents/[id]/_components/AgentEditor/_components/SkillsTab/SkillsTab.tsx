@@ -99,16 +99,6 @@ export function SkillsTab({ agent }: { agent: Agent }) {
       </div>
       <p style={s.hint}>{t("orderHint")}</p>
 
-      <Button
-        kind="secondary"
-        size="sm"
-        disabled={!hasEnabledLink}
-        title={!hasEnabledLink ? t("evalEmpty") : undefined}
-        onClick={() => setEvalOpen(true)}
-      >
-        {t("evalButton")}
-      </Button>
-
       {links.length === 0 ? (
         <div style={s.empty}>
           <div style={s.emptyTitle}>{t("emptyTitle")}</div>
@@ -118,30 +108,48 @@ export function SkillsTab({ agent }: { agent: Agent }) {
           </Button>
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext
-            items={filtered.map((l) => l.skill_id)}
-            strategy={verticalListSortingStrategy}
+        <>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={filtered.map((l) => l.skill_id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div style={s.list}>
+                {filtered.map((link) => {
+                  const skill = skillsById.get(link.skill_id);
+                  if (!skill) return null;
+                  return (
+                    <SortableRow
+                      key={link.skill_id}
+                      link={link}
+                      skill={skill}
+                      onToggle={(enabled) =>
+                        setEnabled.mutate({ skillId: link.skill_id, enabled })
+                      }
+                      onRemove={() => unlinkSkill.mutate(link.skill_id)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+
+          <Button
+            kind="secondary"
+            size="sm"
+            disabled={!hasEnabledLink}
+            title={!hasEnabledLink ? t("evalEmpty") : undefined}
+            onClick={() => setEvalOpen(true)}
           >
-            <div style={s.list}>
-              {filtered.map((link) => {
-                const skill = skillsById.get(link.skill_id);
-                if (!skill) return null;
-                return (
-                  <SortableRow
-                    key={link.skill_id}
-                    link={link}
-                    skill={skill}
-                    onToggle={(enabled) =>
-                      setEnabled.mutate({ skillId: link.skill_id, enabled })
-                    }
-                    onRemove={() => unlinkSkill.mutate(link.skill_id)}
-                  />
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
+            {t("evalButton")}
+          </Button>
+
+          <SkillsEvalModal
+            agentId={agent.id}
+            open={evalOpen}
+            onClose={() => setEvalOpen(false)}
+          />
+        </>
       )}
 
       {pickerOpen && (
@@ -151,12 +159,6 @@ export function SkillsTab({ agent }: { agent: Agent }) {
           onClose={() => setPickerOpen(false)}
         />
       )}
-
-      <SkillsEvalModal
-        agentId={agent.id}
-        open={evalOpen}
-        onClose={() => setEvalOpen(false)}
-      />
     </div>
   );
 }

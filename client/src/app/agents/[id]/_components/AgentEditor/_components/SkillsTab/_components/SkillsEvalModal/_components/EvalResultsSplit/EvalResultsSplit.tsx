@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import type { SkillsEvalResult } from '@/vendor/shared/contracts/knowledge';
+import type { SkillsEvalResult } from '@devdigest/shared';
 import { diffFindings, type AnnotatedFinding } from './diffFindings';
 import { FindingRow } from '../FindingRow';
 import { s } from './styles';

@@ -79,4 +79,20 @@ d('seed --with-skills', () => {
     expect(skills.filter((s) => s.name === 'API Contract Gate')).toHaveLength(1);
     expect(links).toHaveLength(2);
   });
+
+  it('re-running --with-skills preserves a user-toggled-off link', async () => {
+    const { db } = pg.handle;
+    const { workspaceId, userId } = await seed(db);
+    await seedWithSkills(db, workspaceId, userId);
+    const [agent] = await db.select().from(t.agents).where(eq(t.agents.name, 'Test Quality Reviewer'));
+    // Simulate UI toggle: disable all links.
+    await db.update(t.agentSkills)
+      .set({ enabled: false })
+      .where(eq(t.agentSkills.agentId, agent!.id));
+    // Re-seed.
+    await seedWithSkills(db, workspaceId, userId);
+    // The disabled state must survive (onConflictDoNothing preserves existing rows).
+    const links = await db.select().from(t.agentSkills).where(eq(t.agentSkills.agentId, agent!.id));
+    expect(links.every((l) => l.enabled === false)).toBe(true);
+  });
 });
