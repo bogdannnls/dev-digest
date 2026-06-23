@@ -14,7 +14,6 @@
     "addSkill": "Add Skill",
     "createFromScratch": "Create",
     "importFromFile": "Import",
-    "importComingSoon": "Coming soon",
     "loadError": "Could not load skills.",
     "emptyTitle": "No skills yet",
     "emptyBody": "A skill is a directive — a piece of guidance your agents can include in their prompt. Create one to start.",

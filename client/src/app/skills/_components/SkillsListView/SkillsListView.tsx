@@ -12,6 +12,7 @@ import { SkillsToolbar } from "./_components/SkillsToolbar";
 import { SkillPreviewDrawer } from "./_components/SkillPreviewDrawer";
 import { DeleteSkillDialog } from "./_components/DeleteSkillDialog";
 import { AddSkillButton } from "./_components/AddSkillButton";
+import { ImportSkillDialog } from "./_components/ImportSkillDialog";
 import { filterSkills } from "./helpers";
 import { s } from "./styles";
 
@@ -24,6 +25,7 @@ export function SkillsListView() {
   const [types, setTypes] = React.useState<Set<SkillType>>(new Set());
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = React.useState<string | null>(null);
+  const [importing, setImporting] = React.useState(false);
 
   const hasSkills = (skills?.length ?? 0) > 0;
   const visible = filterSkills(skills ?? [], query, types);
@@ -38,7 +40,7 @@ export function SkillsListView() {
             <p style={s.subtitle}>{t("list.subtitle")}</p>
           </div>
           <div style={{ marginLeft: "auto" }}>
-            <AddSkillButton onCreate={() => router.push("/skills/new")} />
+            <AddSkillButton onCreate={() => router.push("/skills/new")} onImport={() => setImporting(true)} />
           </div>
         </div>
 
@@ -65,7 +67,7 @@ export function SkillsListView() {
             onQuery={setQuery}
             types={types}
             onTypes={setTypes}
-            actions={<AddSkillButton onCreate={() => router.push("/skills/new")} />}
+            actions={<AddSkillButton onCreate={() => router.push("/skills/new")} onImport={() => setImporting(true)} />}
           />
         )}
         {filteredOut && (
@@ -105,6 +107,7 @@ export function SkillsListView() {
           onDeleted={() => setSelectedId(null)}
         />
       )}
+      <ImportSkillDialog open={importing} onClose={() => setImporting(false)} />
     </AppShell>
   );
 }
