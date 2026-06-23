@@ -101,3 +101,13 @@ What we tried: trusting the generated migration. It produced `provider text NOT 
 What worked: adding a second hand-written migration with `ALTER TABLE "repos" ADD CONSTRAINT "repos_provider_check" CHECK (provider IN ('github', 'bitbucket'))`. The Drizzle `enum` option on `text()` columns is TypeScript-only; it does not emit a SQL-level constraint. Only `pgEnum()` (which creates a Postgres `CREATE TYPE`) gets database enforcement.
 
 Why it matters: without the CHECK, invalid provider values are accepted silently at the DB layer and surface only as TypeScript errors in application code — no runtime rejection, no migration failure. Any future `text({ enum })` column that needs DB-level integrity requires the same manual step: generate the schema migration, then add a second hand-written migration for the CHECK.
+
+## 2026-06-24 — Drizzle snapshot chain in main is broken at 0012/0013, blocking `db:generate`
+
+Context: tried `pnpm db:generate` after editing `server/src/db/schema/knowledge.ts` to add `evidence_start_line` / `evidence_end_line` columns to `conventions`. drizzle-kit aborted with `[meta/0010_snapshot.json, meta/0012_snapshot.json, meta/0013_snapshot.json] are pointing to a parent snapshot ... which is a collision`.
+
+What we tried: `jq '.id, .prevId' meta/00{10..13}_snapshot.json`. Result: `0010.id=c73c…`, `0011.id=0541…/prevId=c73c…` (correct), but `0012.id=6b7c…/prevId=738d…` and `0013.id=6b7c…/prevId=738d…` — both skip `0011` and share the same `id`. The chain forks and collides.
+
+What worked for unblocking this PR: hand-write `0014_evidence_lines.sql` and append a single entry to `meta/_journal.json`. Skip writing `meta/0014_snapshot.json` — the runtime applier (`migrate()` in `db:migrate`) reads only the journal + SQL files; per-migration snapshots are consumed only by future `db:generate`. The collision remains for the next person who runs `db:generate`.
+
+Why it matters: the bug is silent until you try to add a column. The error message names three files but not the actual fault (two snapshots forked off `0010` with identical ids). The repo-INSIGHTS already documents that the journal is load-bearing — this is the adjacent failure: per-migration snapshots are also load-bearing for `db:generate`, and a broken chain in main poisons every future migration until repaired. Open follow-up: regenerate `0012`/`0013` snapshots so the chain runs `0010 → 0011 → 0012 → 0013 → 0014`.
