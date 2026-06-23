@@ -254,4 +254,48 @@ d('agent_skills.enabled', () => {
     ]);
     await app.close();
   });
+
+  it('skill link/order/enable changes do not bump the agent version', async () => {
+    const app = await makeApp();
+    const agentId = await createAgent(app);
+    const sA = await createSkill(app, 'inv-A');
+    const sB = await createSkill(app, 'inv-B');
+
+    const initialVersion = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}` })
+    ).json().version as number;
+    expect(initialVersion).toBe(1);
+
+    // Link, reorder, toggle, unlink — none of these should bump the version.
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_id: sA },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_id: sB },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_ids: [sB, sA] },
+    });
+    await app.inject({
+      method: 'PATCH',
+      url: `/agents/${agentId}/skills/${sA}`,
+      payload: { enabled: false },
+    });
+    await app.inject({
+      method: 'DELETE',
+      url: `/agents/${agentId}/skills/${sB}`,
+    });
+
+    const after = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}` })
+    ).json().version as number;
+    expect(after).toBe(initialVersion);
+    await app.close();
+  });
 });
