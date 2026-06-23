@@ -255,6 +255,39 @@ d('agent_skills.enabled', () => {
     await app.close();
   });
 
+  it('POST /agents/:id/skills with { skill_id, enabled } on an already-linked skill honors explicit enabled', async () => {
+    const app = await makeApp();
+    const repo = new AgentsRepository(pg.handle.db);
+    const agentId = await createAgent(app);
+    const skillId = await createSkill(app, 'relink-target');
+
+    // First link: enabled true (default)
+    await repo.linkSkill(agentId, skillId, 0);
+    let links = await repo.linkedSkills(agentId);
+    expect(links[0]!.enabled).toBe(true);
+
+    // POST with explicit enabled: false on the same (agentId, skillId)
+    const res = await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_id: skillId, enabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    links = await repo.linkedSkills(agentId);
+    expect(links[0]!.enabled).toBe(false);
+
+    // POST again without explicit enabled — should preserve the current value (false)
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_id: skillId },
+    });
+    links = await repo.linkedSkills(agentId);
+    expect(links[0]!.enabled).toBe(false);
+
+    await app.close();
+  });
+
   it('skill link/order/enable changes do not bump the agent version', async () => {
     const app = await makeApp();
     const agentId = await createAgent(app);

@@ -209,19 +209,23 @@ export class AgentsRepository {
     return links.map((l) => l.skill.id);
   }
 
-  /** Link a skill to an agent at a given order (idempotent: upserts order; enabled defaults to true on insert). */
+  /** Link a skill to an agent at a given order (idempotent: upserts order and, when explicitly
+   *  passed, enabled; omitting enabled on re-link preserves the existing DB value). */
   async linkSkill(
     agentId: string,
     skillId: string,
     order: number,
-    enabled: boolean = true,
+    enabled?: boolean,
   ): Promise<void> {
     await this.db
       .insert(t.agentSkills)
-      .values({ agentId, skillId, order, enabled })
+      .values({ agentId, skillId, order, enabled: enabled ?? true })
       .onConflictDoUpdate({
         target: [t.agentSkills.agentId, t.agentSkills.skillId],
-        set: { order },
+        set: {
+          order,
+          ...(enabled !== undefined ? { enabled } : {}),
+        },
       });
   }
 
