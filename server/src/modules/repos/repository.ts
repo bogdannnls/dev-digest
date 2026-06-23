@@ -15,6 +15,7 @@ export interface InsertRepo {
   name: string;
   fullName: string;
   createdBy: string;
+  provider: 'github' | 'bitbucket';
 }
 
 export class RepoRepository {
@@ -50,6 +51,7 @@ export class RepoRepository {
         name: values.name,
         fullName: values.fullName,
         createdBy: values.createdBy,
+        provider: values.provider,
       })
       .returning();
     return row!;

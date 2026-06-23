@@ -94,7 +94,7 @@ export class RepoService {
     const existing = await this.repo.findByFullName(workspaceId, fullName);
     if (existing) return { repo: toRepoDto(existing), created: false };
 
-    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId });
+    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId, provider: 'github' });
     await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: row.id,
       owner,
