@@ -138,7 +138,12 @@ export class AgentsService {
   /** Linked skills for an agent as AgentSkillLink[] (ordered). */
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
-    return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+    return links.map((l) => ({
+      agent_id: agentId,
+      skill_id: l.skill.id,
+      order: l.order,
+      enabled: l.enabled,
+    }));
   }
 
   /**
@@ -162,12 +167,46 @@ export class AgentsService {
     agentId: string,
     skillId: string,
     order?: number,
+    enabled?: boolean,
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
-    await this.repo.linkSkill(agentId, skillId, resolvedOrder);
+    await this.repo.linkSkill(agentId, skillId, resolvedOrder, enabled);
+    return this.skillLinks(agentId);
+  }
+
+  /**
+   * Toggle the enabled flag on a single link. Returns the updated ordered link
+   * list, or undefined if the agent is missing in this workspace OR no link
+   * exists for (agentId, skillId).
+   */
+  async setSkillEnabled(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+    enabled: boolean,
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const updated = await this.repo.setSkillEnabled(agentId, skillId, enabled);
+    if (!updated) return undefined;
+    return this.skillLinks(agentId);
+  }
+
+  /**
+   * Unlink a single skill from an agent. Returns the updated link list (possibly
+   * empty), or undefined if the agent is missing in this workspace.
+   */
+  async unlinkSkill(
+    workspaceId: string,
+    agentId: string,
+    skillId: string,
+  ): Promise<AgentSkillLink[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    await this.repo.unlinkSkill(agentId, skillId);
     return this.skillLinks(agentId);
   }
 

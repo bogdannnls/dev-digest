@@ -113,6 +113,25 @@ d('agent_skills.enabled', () => {
     await app.close();
   });
 
+  it('service.skillLinks returns enabled on every link', async () => {
+    const app = await makeApp();
+    const repo = new AgentsRepository(pg.handle.db);
+    const agentId = await createAgent(app);
+    const sA = await createSkill(app, 'svc-A');
+    const sB = await createSkill(app, 'svc-B');
+    await repo.linkSkill(agentId, sA, 0, false);
+    await repo.linkSkill(agentId, sB, 1, true);
+
+    const res = await app.inject({ method: 'GET', url: `/agents/${agentId}/skills` });
+    expect(res.statusCode).toBe(200);
+    const links = res.json();
+    expect(links).toEqual([
+      { agent_id: agentId, skill_id: sA, order: 0, enabled: false },
+      { agent_id: agentId, skill_id: sB, order: 1, enabled: true },
+    ]);
+    await app.close();
+  });
+
   it('setSkills preserves enabled of pre-existing rows and defaults new rows to true', async () => {
     const app = await makeApp();
     const repo = new AgentsRepository(pg.handle.db);
