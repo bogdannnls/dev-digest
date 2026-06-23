@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   DndContext,
@@ -31,6 +31,7 @@ import {
 import { useSkills } from "@/lib/hooks/skills";
 import { LinkedSkillRow } from "./_components/LinkedSkillRow";
 import { AddSkillPicker } from "./_components/AddSkillPicker";
+import { SkillsEvalModal } from "./_components/SkillsEvalModal";
 import { s } from "./styles";
 
 export function SkillsTab({ agent }: { agent: Agent }) {
@@ -44,6 +45,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
 
   const [filter, setFilter] = React.useState("");
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [evalOpen, setEvalOpen] = useState(false);
 
   const skillsById = React.useMemo(
     () => new Map(allSkills.map((sk) => [sk.id, sk])),
@@ -55,6 +57,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   );
 
   const enabledCount = links.filter((l) => l.enabled).length;
+  const hasEnabledLink = links.some((l) => l.enabled);
 
   const filtered = links.filter((l) => {
     const sk = skillsById.get(l.skill_id);
@@ -95,6 +98,16 @@ export function SkillsTab({ agent }: { agent: Agent }) {
         )}
       </div>
       <p style={s.hint}>{t("orderHint")}</p>
+
+      <Button
+        kind="secondary"
+        size="sm"
+        disabled={!hasEnabledLink}
+        title={!hasEnabledLink ? t("evalEmpty") : undefined}
+        onClick={() => setEvalOpen(true)}
+      >
+        {t("evalButton")}
+      </Button>
 
       {links.length === 0 ? (
         <div style={s.empty}>
@@ -138,6 +151,12 @@ export function SkillsTab({ agent }: { agent: Agent }) {
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      <SkillsEvalModal
+        agentId={agent.id}
+        open={evalOpen}
+        onClose={() => setEvalOpen(false)}
+      />
     </div>
   );
 }

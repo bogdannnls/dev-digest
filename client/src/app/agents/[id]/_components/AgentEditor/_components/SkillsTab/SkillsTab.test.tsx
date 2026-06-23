@@ -7,6 +7,7 @@ import agentsMessages from "../../../../../../../../messages/en/agents.json";
 import { SkillsTab } from "./SkillsTab";
 import type { Agent, AgentSkillLink, Skill } from "@devdigest/shared";
 import type { DragEndEvent } from "@dnd-kit/core";
+import * as agentsHooks from "@/lib/hooks/agents";
 
 const agent: Agent = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -49,6 +50,28 @@ function wrap(ui: React.ReactNode, qc: QueryClient) {
 const apiSpy = vi.hoisted(() => ({ post: vi.fn(), patch: vi.fn(), del: vi.fn(), get: vi.fn(), put: vi.fn() }));
 vi.mock("../../../../../../../lib/api", () => ({ api: apiSpy, ApiError: class extends Error {} }));
 
+// We wrap only the three hooks used in the new Compare-button tests as vi.fn spies.
+// The factory captures `actual` which gives us the real implementations;
+// beforeEach restores them so existing QC-seeding tests are unaffected.
+const _realAgentsHooks = vi.hoisted(() => ({
+  useAgentSkills: undefined as any,
+  useEvalFixtures: undefined as any,
+  useSkillsEval: undefined as any,
+}));
+
+vi.mock("@/lib/hooks/agents", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/hooks/agents")>();
+  _realAgentsHooks.useAgentSkills = actual.useAgentSkills;
+  _realAgentsHooks.useEvalFixtures = actual.useEvalFixtures;
+  _realAgentsHooks.useSkillsEval = actual.useSkillsEval;
+  return {
+    ...actual,
+    useAgentSkills: vi.fn(actual.useAgentSkills),
+    useEvalFixtures: vi.fn(actual.useEvalFixtures),
+    useSkillsEval: vi.fn(actual.useSkillsEval),
+  };
+});
+
 // Capture the onDragEnd handler from DndContext so we can fire it directly.
 // jsdom does not provide a real pointer/keyboard event loop, so driving
 // @dnd-kit's KeyboardSensor via userEvent.keyboard is unreliable in unit tests.
@@ -71,7 +94,18 @@ beforeEach(() => {
   apiSpy.get.mockReset();
   apiSpy.put.mockReset();
   capturedOnDragEnd = undefined;
+  // Restore agents hook spies to real implementations between tests.
+  // QC-based tests rely on the real hooks reading from QueryClient cache.
+  vi.mocked(agentsHooks.useAgentSkills).mockImplementation(_realAgentsHooks.useAgentSkills);
+  vi.mocked(agentsHooks.useEvalFixtures).mockImplementation(_realAgentsHooks.useEvalFixtures);
+  vi.mocked(agentsHooks.useSkillsEval).mockImplementation(_realAgentsHooks.useSkillsEval);
 });
+
+function renderTab() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(["skills"], skills);
+  return render(wrap(<SkillsTab agent={agent} />, qc));
+}
 
 describe("SkillsTab", () => {
   it("renders the empty state when no skills are linked", () => {
@@ -146,6 +180,36 @@ describe("SkillsTab", () => {
     await userEvent.type(screen.getByPlaceholderText(/filter skills/i), "skill-b");
     expect(screen.queryByText("skill-a")).not.toBeInTheDocument();
     expect(screen.getByText("skill-b")).toBeInTheDocument();
+  });
+
+  it("renders Compare button enabled when ≥1 link is enabled", () => {
+    vi.mocked(agentsHooks.useAgentSkills).mockReturnValue({
+      data: [{ skill_id: "s-a", enabled: true, order: 0, agent_id: agent.id }],
+      isLoading: false,
+    } as any);
+    renderTab();
+    expect(screen.getByRole("button", { name: /compare with vs without skills/i })).toBeEnabled();
+  });
+
+  it("disables Compare button when no enabled links", () => {
+    vi.mocked(agentsHooks.useAgentSkills).mockReturnValue({
+      data: [{ skill_id: "s-a", enabled: false, order: 0, agent_id: agent.id }],
+      isLoading: false,
+    } as any);
+    renderTab();
+    expect(screen.getByRole("button", { name: /compare with vs without skills/i })).toBeDisabled();
+  });
+
+  it("opens the modal on click", async () => {
+    vi.mocked(agentsHooks.useAgentSkills).mockReturnValue({
+      data: [{ skill_id: "s-a", enabled: true, order: 0, agent_id: agent.id }],
+      isLoading: false,
+    } as any);
+    vi.mocked(agentsHooks.useEvalFixtures).mockReturnValue({ data: [{ id: "a", title: "Alpha" }], isLoading: false } as any);
+    vi.mocked(agentsHooks.useSkillsEval).mockReturnValue({ mutate: vi.fn(), isPending: false, isError: false, data: undefined, reset: vi.fn() } as any);
+    renderTab();
+    await userEvent.click(screen.getByRole("button", { name: /compare with vs without skills/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("drag-reorder fires POST { skill_ids } in the new order", async () => {
