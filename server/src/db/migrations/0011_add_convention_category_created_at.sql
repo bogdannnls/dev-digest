@@ -1,3 +1,2 @@
-ALTER TABLE "conventions"
-  ADD COLUMN "category" text NOT NULL DEFAULT 'general',
-  ADD COLUMN "created_at" timestamptz NOT NULL DEFAULT now();
+ALTER TABLE "conventions" ADD COLUMN "category" text DEFAULT 'general' NOT NULL;--> statement-breakpoint
+ALTER TABLE "conventions" ADD COLUMN "created_at" timestamp with time zone DEFAULT now() NOT NULL;
