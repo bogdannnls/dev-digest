@@ -2,7 +2,7 @@ import type { Container } from '../../platform/container.js';
 import { type Repo } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { RepoRepository } from './repository.js';
-import { parseRepoUrl, withGitHubToken, toRepoDto } from './helpers.js';
+import { parseRepoUrl, withForgeToken, toRepoDto } from './helpers.js';
 import {
   CLONE_JOB_KIND,
   CLONE_DEPTH,
@@ -28,6 +28,7 @@ export interface CloneJobPayload {
   owner: string;
   name: string;
   url: string;
+  provider: 'github' | 'bitbucket';
 }
 
 export class RepoService {
@@ -49,15 +50,33 @@ export class RepoService {
   }
 
   async runCloneJob(payload: CloneJobPayload): Promise<void> {
-    const { repoId, owner, name, url } = payload;
-    const token = await this.container.secrets.get(GITHUB_TOKEN_SECRET);
-    const cloneUrl = token ? withGitHubToken(url, token) : url;
+    const { repoId, owner, name, url, provider } = payload;
+
+    const token = await this.container.secrets.get(
+      provider === 'bitbucket' ? 'BITBUCKET_TOKEN' : GITHUB_TOKEN_SECRET,
+    );
+    const username = provider === 'bitbucket'
+      ? await this.container.secrets.get('BITBUCKET_USERNAME')
+      : undefined;
+    const appPassword = provider === 'bitbucket'
+      ? await this.container.secrets.get('BITBUCKET_APP_PASSWORD')
+      : undefined;
+
+    const cloneUrl =
+      token || username
+        ? withForgeToken(url, provider, {
+            token: token ?? undefined,
+            username: username ?? undefined,
+            appPassword: appPassword ?? undefined,
+          })
+        : url;
+
     const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
       depth: CLONE_DEPTH,
     });
     await this.repo.updateClonePath(repoId, path);
 
-    // T2.2 — kick off the indexer in the background. ENQUEUE (not call) so the
+    // Kick off the indexer in the background. ENQUEUE (not call) so the
     // clone job closes immediately and the (heavier) index runs as its own
     // job under JobRunner's timeout/retry. If the handler isn't registered
     // (e.g. repo-intel disabled at module wiring), enqueue() throws — log and
@@ -88,18 +107,19 @@ export class RepoService {
     userId: string,
     url: string,
   ): Promise<{ repo: Repo; created: boolean }> {
-    const { owner, name } = parseRepoUrl(url);
+    const { owner, name, provider } = parseRepoUrl(url);
     const fullName = `${owner}/${name}`;
 
     const existing = await this.repo.findByFullName(workspaceId, fullName);
     if (existing) return { repo: toRepoDto(existing), created: false };
 
-    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId });
+    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId, provider });
     await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: row.id,
       owner,
       name,
       url,
+      provider,
     } satisfies CloneJobPayload);
 
     return { repo: toRepoDto(row), created: true };
@@ -114,11 +134,15 @@ export class RepoService {
   async refresh(workspaceId: string, id: string): Promise<{ status: 'refreshing' }> {
     const repo = await this.repo.getById(workspaceId, id);
     if (!repo) throw new NotFoundError('Repo not found');
+    const provider = (repo.provider ?? 'github') as 'github' | 'bitbucket';
+    const baseHost = provider === 'bitbucket' ? 'bitbucket.org' : 'github.com';
+    const cloneUrl = `https://${baseHost}/${repo.fullName}.git`;
     await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: repo.id,
       owner: repo.owner,
       name: repo.name,
-      url: `https://github.com/${repo.fullName}.git`,
+      url: cloneUrl,
+      provider,
     } satisfies CloneJobPayload);
     // T2.2 — also enqueue an incremental refresh. The two queue positions are
     // independent (p-queue doesn't FIFO across kinds), but `runIncremental` is

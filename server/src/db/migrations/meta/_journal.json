@@ -85,6 +85,20 @@
       "when": 1782239862276,
       "tag": "0011_add_convention_category_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782240599391,
+      "tag": "0012_first_bastion",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1750636800000,
+      "tag": "0013_add_provider_check",
+      "breakpoints": true
     }
   ]
 }

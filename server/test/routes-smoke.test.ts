@@ -22,7 +22,7 @@ describe('routes (no DB)', () => {
   it('POST /settings/test-connection (github) returns structured ConnTestResult', async () => {
     const app = await buildApp({
       config,
-      overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
+      overrides: { forge: { github: new MockGitHubClient({ login: 'octocat' }) } },
     });
     const res = await app.inject({
       method: 'POST',
@@ -34,6 +34,25 @@ describe('routes (no DB)', () => {
     expect(body.provider).toBe('github');
     expect(body.ok).toBe(true);
     expect(body.message).toContain('octocat');
+    await app.close();
+  });
+
+  it('POST /settings/test-connection (bitbucket) returns structured ConnTestResult', async () => {
+    const app = await buildApp({
+      config,
+      // MockGitHubClient implements ForgeClient — fine as a stub for any provider
+      overrides: { forge: { bitbucket: new MockGitHubClient({ login: 'bbuser' }) } },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/settings/test-connection',
+      payload: { provider: 'bitbucket' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.provider).toBe('bitbucket');
+    expect(body.ok).toBe(true);
+    expect(body.message).toContain('bbuser');
     await app.close();
   });
 

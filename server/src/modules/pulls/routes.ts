@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type { PrMeta, PrDetail, ForgeClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput, emptyFindingsBuckets } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -113,11 +113,11 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    let gh: GitHubClient | null = null;
+    let gh: ForgeClient | null = null;
     try {
-      gh = await container.github();
+      gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
     } catch (err) {
-      app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
+      app.log.warn({ err }, 'Forge client unavailable (no token / offline); serving persisted PRs');
     }
 
     // Local-first: sync from GitHub when a token is configured, but never
@@ -155,7 +155,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
             });
         }
       } catch (err) {
-        app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+        app.log.warn({ err }, 'Forge PR sync skipped (no token / offline); serving persisted PRs');
       }
     }
 
@@ -266,7 +266,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
     try {
-      const gh = await container.github();
+      const gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -308,7 +308,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { findings: _adapterFindings, ...detailRest } = detail;
       return { ...detailRest, id: pr.id, findings };
     } catch (err) {
-      app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
+      app.log.warn({ err }, 'Forge PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
       const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
       return {
@@ -364,17 +364,17 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     async (req): Promise<PrReviewComment[]> => {
       const { workspaceId } = await getContext(container, req);
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
-      let gh: GitHubClient;
+      let gh: ForgeClient;
       try {
-        gh = await container.github();
+        gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       } catch (err) {
-        app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
+        app.log.warn({ err }, 'Forge client unavailable; serving no PR comments');
         return [];
       }
       try {
         return await gh.listReviewComments({ owner: repo.owner, name: repo.name }, pr.number);
       } catch (err) {
-        app.log.warn({ err }, 'GitHub review-comments fetch skipped (offline / error)');
+        app.log.warn({ err }, 'Forge review-comments fetch skipped (offline / error)');
         return [];
       }
     },
@@ -387,13 +387,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { workspaceId } = await getContext(container, req);
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
       const input = req.body;
-      let gh: GitHubClient;
+      let gh: ForgeClient;
       try {
-        gh = await container.github();
+        gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       } catch {
         throw new AppError(
-          'github_unavailable',
-          'Connect a GitHub token to post comments.',
+          'forge_unavailable',
+          'Connect a forge token to post comments.',
           400,
         );
       }
@@ -408,8 +408,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         });
       } catch (err) {
         // GitHub rejects comments on lines outside the diff / on closed PRs (422).
-        const msg = err instanceof Error ? err.message : 'Failed to post the comment to GitHub.';
-        throw new AppError('github_comment_failed', msg, 400, { cause: String(err) });
+        const msg = err instanceof Error ? err.message : 'Failed to post the comment to the forge provider.';
+        throw new AppError('forge_comment_failed', msg, 400, { cause: String(err) });
       }
     },
   );

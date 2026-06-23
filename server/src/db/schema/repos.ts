@@ -16,6 +16,7 @@ export const repos = pgTable(
     clonePath: text('clone_path'),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id),
+    provider: text('provider', { enum: ['github', 'bitbucket'] }).notNull().default('github'),
     createdAt: now(),
   },
   (t) => ({

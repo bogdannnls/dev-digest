@@ -84,8 +84,23 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         container.invalidateSecretCaches();
       }
       if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
+        const gh = await container.forgeClient('github');
         const login = await gh.currentLogin();
+        return { provider, ok: true, message: `Connected as @${login}` };
+      }
+      if (provider === 'bitbucket') {
+        // The generic `if (key)` block above already persists the OAuth token via
+        // SECRET_KEY_BY_PROVIDER['bitbucket'] = 'BITBUCKET_TOKEN'. Here we only
+        // need to handle App Password credentials.
+        if (req.body.username && container.secrets.set) {
+          await container.secrets.set('BITBUCKET_USERNAME', req.body.username);
+          if (req.body.appPassword) {
+            await container.secrets.set('BITBUCKET_APP_PASSWORD', req.body.appPassword);
+          }
+          container.invalidateSecretCaches();
+        }
+        const bb = await container.forgeClient('bitbucket');
+        const login = await bb.currentLogin();
         return { provider, ok: true, message: `Connected as @${login}` };
       }
       const llm = await container.llm(provider);

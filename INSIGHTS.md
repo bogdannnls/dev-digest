@@ -99,3 +99,33 @@ What we tried: expected the method to return config files since they contain the
 What worked: discovered it is a thin wrapper around `getTopFilesByRank()` which applies `isJunkPath()` — this function explicitly filters out paths matching `'eslint'`, `'prettier'`, and `'.config.'`. Config files must be read separately in the extraction pipeline, outside of `getConventionSamples`.
 
 Why it matters: an implementer who calls `getConventionSamples()` expecting config files will silently miss the richest source of explicit conventions with no error or warning. `server/src/modules/repo-intel/service.ts:630`.
+
+## 2026-06-23 — Manually created Drizzle migration files are silently skipped without a journal entry
+
+Context: implementing the Conventions Extractor — Task 1 manually wrote `0011_add_convention_category_created_at.sql` and ran `pnpm db:migrate`. Task 2 integration tests failed with "column 'category' does not exist".
+
+What we tried: assumed `pnpm db:migrate` scans the migrations directory for `.sql` files and applies unapplied ones.
+
+What worked: running `drizzle-kit generate`, which registered the existing SQL file in `_journal.json` and created the `0011_snapshot.json`. After that, `pnpm db:migrate` applied the migration correctly.
+
+Why it matters: Drizzle's `migrate()` checks `_journal.json` to know which files to apply — it does not scan the filesystem for `.sql` files directly. A manually created migration is silently ignored with no error or warning until the journal entry exists. Always use `drizzle-kit generate` to register new migrations. `server/src/db/migrations/meta/_journal.json`.
+
+## 2026-06-23 — RunBus done-signal method is `complete(runId)`, not `done()` or `markDone()`
+
+Context: implementing `ConventionsService.startExtraction()` — needed to signal that the background extraction job was finished so the SSE stream would close.
+
+What we tried: plan docs guessed `container.runBus.done(scanId)` as the done-signal method.
+
+What worked: `container.runBus.complete(runId)` — found at `server/src/platform/sse.ts:76`.
+
+Why it matters: the method name is not guessable from the consumer side (modules that call it) — you have to read the platform file. Future SSE background jobs must use `complete()`, not `done()`.
+
+## 2026-06-23 — Extending `RunEventKind` breaks typecheck in `run-logger.ts` exhaustiveness map
+
+Context: extending the `RunEventKind` enum in `trace.ts` to add conventions-specific event kinds (`'sampling'`, `'analyzing'`, `'verifying'`, `'done'`).
+
+What we tried: adding the new values to the enum and running typecheck.
+
+What worked: also updating the `LEVEL` map in `run-logger.ts` — an exhaustive `Record<RunEventKind, keyof PinoLike>` that TypeScript enforces at compile time.
+
+Why it matters: the coupling between `trace.ts` and `run-logger.ts` is invisible unless you happen to run typecheck. Any future enum extension will break the same way. When adding to `RunEventKind`, always check `server/src/platform/run-logger.ts` for the `LEVEL` map and add entries for each new variant. `server/src/platform/run-logger.ts` + `server/src/vendor/shared/contracts/trace.ts`.

@@ -1,7 +1,7 @@
 import type {
   AuthProvider,
   SecretsProvider,
-  GitHubClient,
+  ForgeClient,
   GitClient,
   CodeIndex,
   Embedder,
@@ -23,6 +23,7 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
+import { BitbucketClient } from '../adapters/bitbucket/rest.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
@@ -40,7 +41,7 @@ import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.j
 export interface ContainerOverrides {
   secrets?: SecretsProvider;
   auth?: AuthProvider;
-  github?: GitHubClient;
+  forge?: Partial<Record<'github' | 'bitbucket', ForgeClient>>;
   git?: GitClient;
   codeIndex?: CodeIndex;
   embedder?: Embedder;
@@ -62,7 +63,7 @@ export class Container {
   readonly runBus: RunBus;
 
   private _git?: GitClient;
-  private _github?: GitHubClient;
+  private _forgeClients = new Map<string, ForgeClient>();
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -150,13 +151,32 @@ export class Container {
     return this._priceBook;
   }
 
-  async github(): Promise<GitHubClient> {
-    if (this.overrides.github) return this.overrides.github;
-    if (this._github) return this._github;
-    const token = await this.secrets.get('GITHUB_TOKEN');
-    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
-    return this._github;
+  async forgeClient(provider: 'github' | 'bitbucket'): Promise<ForgeClient> {
+    const injected = this.overrides.forge?.[provider];
+    if (injected) return injected;
+    const cached = this._forgeClients.get(provider);
+    if (cached) return cached;
+    if (provider === 'github') {
+      const token = await this.secrets.get('GITHUB_TOKEN');
+      if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
+      const client = new OctokitGitHubClient(token);
+      this._forgeClients.set(provider, client);
+      return client;
+    }
+    // Bitbucket: OAuth token OR App Password (token wins if both present)
+    const token = await this.secrets.get('BITBUCKET_TOKEN');
+    const username = await this.secrets.get('BITBUCKET_USERNAME');
+    const appPassword = await this.secrets.get('BITBUCKET_APP_PASSWORD');
+    if (!token && !(username && appPassword)) {
+      throw new ConfigError('Bitbucket credentials not configured — add BITBUCKET_TOKEN or BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD in Settings');
+    }
+    const client = new BitbucketClient({
+      token: token ?? undefined,
+      username: username ?? undefined,
+      appPassword: appPassword ?? undefined,
+    });
+    this._forgeClients.set(provider, client);
+    return client;
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
@@ -213,7 +233,7 @@ export class Container {
    */
   invalidateSecretCaches(): void {
     this.llmCache.clear();
-    this._github = undefined;
+    this._forgeClients.clear();
     this._embedder = undefined;
   }
 }

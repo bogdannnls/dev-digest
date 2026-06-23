@@ -40,7 +40,7 @@ d('GET /agents/:id/versions', () => {
     return buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: { github: new MockGitHubClient() } },
     });
   }
 

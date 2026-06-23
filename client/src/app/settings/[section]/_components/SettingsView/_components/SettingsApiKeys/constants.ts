@@ -7,7 +7,8 @@ export interface KeyRowSpec {
   hintKey: string;
 }
 
-/** The provider key rows shown in API Keys (OpenAI / Anthropic / GitHub). */
+/** The provider key rows shown in API Keys (OpenAI / Anthropic / GitHub).
+ *  Bitbucket is rendered by BitbucketKeySection below — not in this rows list. */
 export const KEY_ROWS: readonly KeyRowSpec[] = [
   { provider: "openai", labelKey: "apiKeys.openaiLabel", hintKey: "apiKeys.openaiHint" },
   { provider: "anthropic", labelKey: "apiKeys.anthropicLabel", hintKey: "apiKeys.anthropicHint" },

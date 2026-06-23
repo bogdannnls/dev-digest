@@ -18,7 +18,14 @@
     "testing": "Testing…",
     "testFailed": "Test failed",
     "configured": "Configured",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "bitbucketOauthLabel": "Bitbucket OAuth token",
+    "bitbucketOauthHint": "OAuth 2.0 access token. Used if both OAuth and App Password are configured.",
+    "bitbucketUsernameLabel": "Bitbucket username",
+    "bitbucketUsernameHint": "Your Bitbucket account username (not email).",
+    "bitbucketUsernamePlaceholder": "username",
+    "bitbucketAppPasswordLabel": "Bitbucket App Password",
+    "bitbucketAppPasswordHint": "Repository (read+write), Pull requests (read+write), Account (read). Create at bitbucket.org → Personal settings → App passwords."
   },
   "models": {
     "title": "Feature Models",

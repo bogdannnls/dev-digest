@@ -22,3 +22,7 @@ export const GIT_TOKEN_USERNAME = 'x-access-token';
 
 /** Host for which a token is embedded into an https clone URL. */
 export const GITHUB_HTTPS_HOST = 'github.com';
+
+export const BITBUCKET_URL_REGEX = /bitbucket\.org[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/;
+export const BITBUCKET_HTTPS_HOST = 'bitbucket.org';
+export const BITBUCKET_OAUTH_TOKEN_USERNAME = 'x-token-auth';
