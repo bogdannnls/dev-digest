@@ -75,18 +75,15 @@ export const api = {
   del: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
 
   async getEvalFixtures(): Promise<PRFixtureMeta[]> {
-    const res = await fetch(`${API_BASE}/agents/eval-fixtures`);
-    if (!res.ok) throw new ApiError(`${res.status} ${res.statusText}`, res.status);
-    return PRFixtureMeta.array().parse(await res.json());
+    const data = await apiFetch<unknown>('/agents/eval-fixtures');
+    return PRFixtureMeta.array().parse(data);
   },
 
   async runSkillsEval(agentId: string, fixtureId: string): Promise<SkillsEvalResult> {
-    const res = await fetch(`${API_BASE}/agents/${agentId}/skills-eval`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+    const data = await apiFetch<unknown>(`/agents/${agentId}/skills-eval`, {
+      method: 'POST',
       body: JSON.stringify({ fixture_id: fixtureId }),
     });
-    if (!res.ok) throw new ApiError(`${res.status} ${res.statusText}`, res.status);
-    return SkillsEvalResult.parse(await res.json());
+    return SkillsEvalResult.parse(data);
   },
 };
