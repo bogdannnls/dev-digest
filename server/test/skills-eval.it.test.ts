@@ -157,6 +157,16 @@ d('GET /agents/eval-fixtures + POST /agents/:id/skills-eval', () => {
     expect(body.fixture.id).toBe('test-only-happy-path');
     expect(body.with_skills).toBeDefined();
     expect(body.without_skills).toBeDefined();
+
+    // Shape assertions — a regression in findings/tokens would silently pass
+    // without these checks.
+    expect(Array.isArray(body.with_skills.findings)).toBe(true);
+    expect(typeof body.with_skills.tokensIn).toBe('number');
+    expect(typeof body.with_skills.tokensOut).toBe('number');
+    expect(typeof body.with_skills.grounding).toBe('string');
+    expect(Array.isArray(body.without_skills.findings)).toBe(true);
+    expect(typeof body.without_skills.tokensIn).toBe('number');
+
     await app.close();
   });
 

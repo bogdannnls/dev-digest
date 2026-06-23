@@ -28,7 +28,7 @@ if (!hasDocker) {
 
 /** A minimal Review fixture accepted by the Review Zod schema. */
 const REVIEW_FIXTURE: Review = {
-  verdict: 'approved',
+  verdict: 'approve',
   summary: 'LGTM',
   score: 90,
   findings: [],
@@ -179,6 +179,11 @@ d('run-executor: linked skills wiring (Spec D)', () => {
 
     const userContent = await runReview(app, mockLlm, pr.id, agentId);
 
+    // Verify the run completed successfully — if the fixture is invalid the mock
+    // throws, per-agent isolation catches it, and the run ends as 'failed'.
+    const runs = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    expect(runs[0]!.status).toBe('done');
+
     // The skills section must be present and contain exactly the two enabled bodies
     // in the correct order (A before C), with B absent.
     expect(userContent).toContain('## Skills / rules');
@@ -204,6 +209,10 @@ d('run-executor: linked skills wiring (Spec D)', () => {
     await repo.linkSkill(agentId, sX, 0, false);
 
     const userContent = await runReview(app, mockLlm, pr.id, agentId);
+
+    // Verify the run completed successfully.
+    const runs = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    expect(runs[0]!.status).toBe('done');
 
     // The skills section must be absent — prompt identical to pre-Spec-D shape.
     expect(userContent).not.toContain('## Skills / rules');
