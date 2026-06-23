@@ -103,13 +103,15 @@ export const SettingsUpdate = Settings.partial();
 export type SettingsUpdate = z.infer<typeof SettingsUpdate>;
 
 // ---- Connection test ----
-export const ConnTestProvider = z.enum(['openai', 'anthropic', 'openrouter', 'github']);
+export const ConnTestProvider = z.enum(['openai', 'anthropic', 'openrouter', 'github', 'bitbucket']);
 export type ConnTestProvider = z.infer<typeof ConnTestProvider>;
 
 export const ConnTestRequest = z.object({
   provider: ConnTestProvider,
   /** Optional API key/PAT to persist and then test (BYO key from the UI). */
   key: z.string().min(1).optional(),
+  username: z.string().min(1).optional(),
+  appPassword: z.string().min(1).optional(),
 });
 export type ConnTestRequest = z.infer<typeof ConnTestRequest>;
 
@@ -128,6 +130,7 @@ export const SecretsStatus = z.object({
   anthropic: z.boolean(),
   openrouter: z.boolean(),
   github: z.boolean(),
+  bitbucket: z.boolean(),
 });
 export type SecretsStatus = z.infer<typeof SecretsStatus>;
 
