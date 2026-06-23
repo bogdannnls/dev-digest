@@ -5,6 +5,9 @@ import {
   GITHUB_URL_REGEX,
   GIT_TOKEN_USERNAME,
   GITHUB_HTTPS_HOST,
+  BITBUCKET_URL_REGEX,
+  BITBUCKET_HTTPS_HOST,
+  BITBUCKET_OAUTH_TOKEN_USERNAME,
 } from './constants.js';
 
 /**
@@ -12,30 +15,54 @@ import {
  * Pure functions only — no I/O, no DB, no container.
  */
 
-/** Parse `owner`/`name` from a GitHub URL (https or ssh form). */
-export function parseRepoUrl(url: string): { owner: string; name: string } {
-  // https://github.com/owner/repo(.git)  |  git@github.com:owner/repo.git
-  const match = url.match(GITHUB_URL_REGEX);
+/** Detect which forge hosts the URL. */
+export function detectProvider(url: string): 'github' | 'bitbucket' {
+  return url.includes('bitbucket.org') ? 'bitbucket' : 'github';
+}
+
+/** Parse `owner`/`name`/`provider` from a GitHub or Bitbucket URL (https or ssh form). */
+export function parseRepoUrl(url: string): { owner: string; name: string; provider: 'github' | 'bitbucket' } {
+  const provider = detectProvider(url);
+  const regex = provider === 'bitbucket' ? BITBUCKET_URL_REGEX : GITHUB_URL_REGEX;
+  const match = url.match(regex);
   if (!match?.[1] || !match[2]) {
     throw new AppError('invalid_repo_url', `Could not parse owner/repo from '${url}'`, 400);
   }
-  return { owner: match[1], name: match[2] };
+  return { owner: match[1], name: match[2], provider };
 }
 
 /**
- * Embed a token into an https github.com URL so private clones authenticate
- * non-interactively. SSH/non-GitHub URLs are left untouched.
+ * Embed credentials into an https forge URL so private clones authenticate
+ * non-interactively. SSH and unrecognised URLs are left untouched.
+ *
+ * For GitHub: uses `x-access-token:<token>`.
+ * For Bitbucket OAuth token: uses `x-token-auth:<token>`.
+ * For Bitbucket app password: uses `<username>:<appPassword>`.
+ * Token takes precedence over appPassword when both are supplied.
  */
-export function withGitHubToken(url: string, token: string): string {
+export function withForgeToken(
+  url: string,
+  provider: 'github' | 'bitbucket',
+  auth: { token?: string; username?: string; appPassword?: string },
+): string {
   try {
     const u = new URL(url);
-    if (u.protocol === 'https:' && u.hostname === GITHUB_HTTPS_HOST) {
-      u.username = GIT_TOKEN_USERNAME;
-      u.password = token;
+    const isGitHub = provider === 'github' && u.hostname === GITHUB_HTTPS_HOST;
+    const isBitbucket = provider === 'bitbucket' && u.hostname === BITBUCKET_HTTPS_HOST;
+    if (u.protocol !== 'https:' || (!isGitHub && !isBitbucket)) return url;
+
+    if (auth.token) {
+      u.username = provider === 'github' ? GIT_TOKEN_USERNAME : BITBUCKET_OAUTH_TOKEN_USERNAME;
+      u.password = auth.token;
+      return u.toString();
+    }
+    if (provider === 'bitbucket' && auth.username && auth.appPassword) {
+      u.username = auth.username;
+      u.password = auth.appPassword;
       return u.toString();
     }
   } catch {
-    /* non-URL (e.g. git@github.com:...) — leave as-is */
+    /* non-URL (e.g. git@bitbucket.org:...) — leave as-is */
   }
   return url;
 }
