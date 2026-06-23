@@ -89,6 +89,7 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         return { provider, ok: true, message: `Connected as @${login}` };
       }
       if (provider === 'bitbucket') {
+        // TODO Task 4: persist BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD here
         // Bitbucket client not yet implemented (Task 4) — report not configured.
         return { provider, ok: false, message: 'Bitbucket support is not yet available' };
       }

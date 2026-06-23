@@ -24,7 +24,7 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 }
 
 /**
- * GitHubClient over Octokit REST — thin. PAT auth (fine-grained).
+ * ForgeClient implementation for GitHub via Octokit REST — thin. PAT auth (fine-grained).
  * Reads PR list/detail/files/commits/issue; posts reviews; opens PRs.
  */
 export class OctokitGitHubClient implements ForgeClient {
