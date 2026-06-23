@@ -117,10 +117,10 @@ export function LinkedSkillRow({
 
   return (
     <div style={rowStyle}>
-      {/* Drag handle — aria hidden; keyboard reordering handled by parent */}
+      {/* Drag handle — keyboard reordering via @dnd-kit KeyboardSensor */}
       <span
         {...dragHandleProps}
-        aria-hidden="true"
+        aria-label="Reorder skill"
         style={s.handle}
       >
         {/* GripVertical is not in the vendor icon registry — inline SVG */}
