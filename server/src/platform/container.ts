@@ -23,6 +23,7 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
+import { BitbucketClient } from '../adapters/bitbucket/rest.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
@@ -162,8 +163,20 @@ export class Container {
       this._forgeClients.set(provider, client);
       return client;
     }
-    // Bitbucket path added in Task 4.
-    throw new ConfigError(`Bitbucket credentials not yet configured — add BITBUCKET_TOKEN or BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD in Settings`);
+    // Bitbucket: OAuth token OR App Password (token wins if both present)
+    const token = await this.secrets.get('BITBUCKET_TOKEN');
+    const username = await this.secrets.get('BITBUCKET_USERNAME');
+    const appPassword = await this.secrets.get('BITBUCKET_APP_PASSWORD');
+    if (!token && !(username && appPassword)) {
+      throw new ConfigError('Bitbucket credentials not configured — add BITBUCKET_TOKEN or BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD in Settings');
+    }
+    const client = new BitbucketClient({
+      token: token ?? undefined,
+      username: username ?? undefined,
+      appPassword: appPassword ?? undefined,
+    });
+    this._forgeClients.set(provider, client);
+    return client;
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
