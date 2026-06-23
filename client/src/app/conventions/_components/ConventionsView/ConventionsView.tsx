@@ -68,7 +68,7 @@ export function ConventionsView() {
               disabled={acceptedCount === 0}
               onClick={() => setShowModal(true)}
             >
-              Create {acceptedCount > 0 ? `${acceptedCount} ` : ""}skill{acceptedCount !== 1 ? "s" : ""} ✦
+              Create {acceptedCount} skill{acceptedCount !== 1 ? "s" : ""} ✦
             </Button>
           </div>
         )}
