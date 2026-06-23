@@ -246,6 +246,25 @@ d('skills module', () => {
     await app.close();
   });
 
+  it('POST /skills persists source: "imported_url" when provided', async () => {
+    const app = await makeApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/skills',
+      payload: {
+        name: 'from-import',
+        description: '',
+        type: 'custom',
+        body: '# Imported\n',
+        source: 'imported_url',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const created = res.json();
+    expect(created.source).toBe('imported_url');
+    await app.close();
+  });
+
   it('skills are workspace-scoped: another workspace cannot read them', async () => {
     const app = await makeApp();
     const { db } = pg.handle;

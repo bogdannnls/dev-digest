@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillType } from '@devdigest/shared';
+import { SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { NotFoundError } from '../../platform/errors.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import { SkillsService } from './service.js';
 
 /**
@@ -23,6 +23,7 @@ const CreateSkillBody = z.object({
   type: SkillType,
   body: z.string().min(1),
   enabled: z.boolean().optional(),
+  source: SkillSource.optional(),
 });
 
 const UpdateSkillBody = z.object({
@@ -79,5 +80,22 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     const ok = await service.delete(workspaceId, req.params.id);
     if (!ok) throw new NotFoundError('Skill not found');
     return { ok: true };
+  });
+
+  app.post('/skills/import/preview', async (req) => {
+    await getContext(app.container, req);
+    const data = await req.file();
+    if (!data) {
+      throw new ValidationError('No file uploaded.', { code: 'missing_file' });
+    }
+    if (!data.filename.toLowerCase().endsWith('.md')) {
+      throw new ValidationError('File must have a .md extension.', { code: 'wrong_extension' });
+    }
+    const buffer = await data.toBuffer();
+    if (buffer.length > 256 * 1024) {
+      throw new ValidationError('File too large (max 256KB).', { code: 'too_large' });
+    }
+    const text = buffer.toString('utf8');
+    return service.parseImport(text, data.filename);
   });
 }

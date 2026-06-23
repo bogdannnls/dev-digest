@@ -1,7 +1,9 @@
 import type { Container } from '../../platform/container.js';
-import type { Skill, SkillType } from '@devdigest/shared';
+import type { Skill, SkillSource, SkillType } from '@devdigest/shared';
 import { SkillsRepository } from './repository.js';
-import { toSkillDto } from './helpers.js';
+import { parseSkillMarkdown, toSkillDto, type ParsedImportPayload } from './helpers.js';
+
+export type { ParsedImportPayload } from './helpers.js';
 
 /**
  * Skills service. Workspace-scoped facade over the repository.
@@ -14,6 +16,7 @@ export interface CreateSkillInput {
   type: SkillType;
   body: string;
   enabled?: boolean;
+  source?: SkillSource;
 }
 
 export interface UpdateSkillInput {
@@ -49,6 +52,7 @@ export class SkillsService {
       type: input.type,
       body: input.body,
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      ...(input.source !== undefined ? { source: input.source } : {}),
     });
     return toSkillDto(row);
   }
@@ -64,6 +68,10 @@ export class SkillsService {
 
   async delete(workspaceId: string, id: string): Promise<boolean> {
     return this.repo.deleteById(workspaceId, id);
+  }
+
+  parseImport(text: string, filename: string | undefined): ParsedImportPayload {
+    return parseSkillMarkdown(text, filename);
   }
 
   async usage(

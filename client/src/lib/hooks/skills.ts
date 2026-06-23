@@ -4,7 +4,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Skill, SkillType } from "@devdigest/shared";
+import type { Skill, SkillSource, SkillType } from "@devdigest/shared";
 import { api } from "../api";
 
 const KEY_LIST = ["skills"] as const;
@@ -40,6 +40,7 @@ export interface CreateSkillInput {
   type: SkillType;
   body: string;
   enabled?: boolean;
+  source?: SkillSource;
 }
 
 export function useCreateSkill() {
@@ -98,5 +99,20 @@ export function useDeleteSkill() {
       qc.removeQueries({ queryKey: keyOne(id) });
       qc.removeQueries({ queryKey: keyUsage(id) });
     },
+  });
+}
+
+export interface ParsedImportPayload {
+  name: string;
+  description: string;
+  type: SkillType;
+  body: string;
+  warnings: string[];
+}
+
+export function useImportSkillPreview() {
+  return useMutation({
+    mutationFn: (file: File) =>
+      api.upload<ParsedImportPayload>("/skills/import/preview", file),
   });
 }
