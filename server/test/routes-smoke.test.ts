@@ -37,6 +37,24 @@ describe('routes (no DB)', () => {
     await app.close();
   });
 
+  it('POST /settings/test-connection (bitbucket) returns structured ConnTestResult', async () => {
+    const app = await buildApp({
+      config,
+      overrides: { forge: { bitbucket: new MockGitHubClient({ login: 'bbuser' }) } },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/settings/test-connection',
+      payload: { provider: 'bitbucket' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.provider).toBe('bitbucket');
+    expect(body.ok).toBe(true);
+    expect(body.message).toContain('bbuser');
+    await app.close();
+  });
+
   it('POST /settings/test-connection (openai) uses injected LLM listModels', async () => {
     const app = await buildApp({
       config,

@@ -89,9 +89,19 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         return { provider, ok: true, message: `Connected as @${login}` };
       }
       if (provider === 'bitbucket') {
-        // TODO Task 4: persist BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD here
-        // Bitbucket client not yet implemented (Task 4) — report not configured.
-        return { provider, ok: false, message: 'Bitbucket support is not yet available' };
+        // The generic `if (key)` block above already persists the OAuth token via
+        // SECRET_KEY_BY_PROVIDER['bitbucket'] = 'BITBUCKET_TOKEN'. Here we only
+        // need to handle App Password credentials.
+        if (req.body.username && container.secrets.set) {
+          await container.secrets.set('BITBUCKET_USERNAME', req.body.username);
+          if (req.body.appPassword) {
+            await container.secrets.set('BITBUCKET_APP_PASSWORD', req.body.appPassword);
+          }
+          container.invalidateSecretCaches();
+        }
+        const bb = await container.forgeClient('bitbucket');
+        const login = await bb.currentLogin();
+        return { provider, ok: true, message: `Connected as @${login}` };
       }
       const llm = await container.llm(provider);
       const models = await llm.listModels();
