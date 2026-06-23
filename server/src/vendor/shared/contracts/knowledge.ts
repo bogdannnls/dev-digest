@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Finding } from './findings.js';
 
 /**
  * Conformance, Onboarding, Eval, Memory, Conventions, Skills,
@@ -223,3 +224,28 @@ export const AgentVersion = z.object({
   created_at: z.string(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;
+
+// ---- Spec D: Skills A/B eval -------------------------------------------------
+
+export const PRFixtureMeta = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  notes: z.string().optional(),
+});
+export type PRFixtureMeta = z.infer<typeof PRFixtureMeta>;
+
+export const SkillsEvalSide = z.object({
+  findings: z.array(Finding),
+  grounding: z.string(),
+  tokensIn: z.number().int().nonnegative(),
+  tokensOut: z.number().int().nonnegative(),
+  costUsd: z.number().nullable(),
+});
+export type SkillsEvalSide = z.infer<typeof SkillsEvalSide>;
+
+export const SkillsEvalResult = z.object({
+  with_skills: SkillsEvalSide,
+  without_skills: SkillsEvalSide,
+  fixture: PRFixtureMeta,
+});
+export type SkillsEvalResult = z.infer<typeof SkillsEvalResult>;
