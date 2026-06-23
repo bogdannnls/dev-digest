@@ -125,10 +125,17 @@ describe("ImportSkillDialog", () => {
 
   it("Cancel calls onClose without saving", async () => {
     const onClose = vi.fn();
+    const createMutateAsync = vi.fn().mockResolvedValue({ id: "new-id" });
+    vi.mocked(skillsHooks.useCreateSkill).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: createMutateAsync,
+      isPending: false,
+    } as any);
     render(wrap(<ImportSkillDialog open={true} onClose={onClose} />));
     await userEvent.upload(screen.getByLabelText(/Choose a .md file/i) as HTMLInputElement, makeFile());
     await waitFor(() => screen.getByText(/someone else's instructions/i));
     await userEvent.click(screen.getByRole("button", { name: /Cancel/i }));
     expect(onClose).toHaveBeenCalled();
+    expect(createMutateAsync).not.toHaveBeenCalled();
   });
 });

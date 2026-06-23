@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { Button, Markdown, Modal } from "@devdigest/ui";
@@ -26,6 +26,7 @@ type State =
 export function ImportSkillDialog({ open, onClose }: Props) {
   const t = useTranslations("skills");
   const router = useRouter();
+  const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<State>({ phase: "pick" });
 
@@ -73,6 +74,7 @@ export function ImportSkillDialog({ open, onClose }: Props) {
       body: state.data.body,
       source: "imported_url",
     });
+    onClose();
     router.push(`/skills/${result.id}`);
   }
 
@@ -81,7 +83,7 @@ export function ImportSkillDialog({ open, onClose }: Props) {
 
   const footer = isPreview ? (
     <div style={s.footer}>
-      <Button kind="secondary" onClick={handleClose} disabled={create.isPending}>
+      <Button kind="ghost" onClick={handleClose} disabled={create.isPending}>
         {t("import.cancel")}
       </Button>
       <Button kind="primary" onClick={handleCreate} disabled={create.isPending}>
@@ -148,24 +150,27 @@ export function ImportSkillDialog({ open, onClose }: Props) {
               {/* Left column: editable fields */}
               <div>
                 <div style={s.field}>
-                  <label style={s.label}>{t("import.nameLabel")}</label>
+                  <label style={s.label} htmlFor={`${inputId}-name`}>{t("import.nameLabel")}</label>
                   <input
+                    id={`${inputId}-name`}
                     style={s.input}
                     value={state.name}
                     onChange={(e) => setState({ ...state, name: e.target.value })}
                   />
                 </div>
                 <div style={s.field}>
-                  <label style={s.label}>{t("import.typeLabel")}</label>
+                  <label style={s.label} htmlFor={`${inputId}-type`}>{t("import.typeLabel")}</label>
                   <input
+                    id={`${inputId}-type`}
                     style={s.input}
                     value={state.type}
                     onChange={(e) => setState({ ...state, type: e.target.value as SkillType })}
                   />
                 </div>
                 <div style={s.field}>
-                  <label style={s.label}>{t("import.descriptionLabel")}</label>
+                  <label style={s.label} htmlFor={`${inputId}-desc`}>{t("import.descriptionLabel")}</label>
                   <input
+                    id={`${inputId}-desc`}
                     style={s.input}
                     value={state.description}
                     onChange={(e) => setState({ ...state, description: e.target.value })}
