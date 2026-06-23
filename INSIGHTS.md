@@ -89,3 +89,13 @@ What we tried: a one-shot probe workflow that spawned a subagent and asked it to
 What worked: subagent successfully loaded the skill (probe returned `# React Best Practices & Anti-Patterns`). Documented in `docs/superpowers/notes/2026-06-23-subagent-skill-access-probe.md`.
 
 Why it matters: future dispatcher workflows can compose multiple skills in a subagent prompt ("invoke skills X, Y, Z first, then review") instead of inlining rule lists. Cheaper to maintain; auto-updates when the skills change.
+
+## 2026-06-23 — `repoIntel.getConventionSamples()` excludes config files via junk-path filter
+
+Context: designing the Conventions Extractor pipeline, planning to use `getConventionSamples()` for all file sampling including eslint/tsconfig/prettier.
+
+What we tried: expected the method to return config files since they contain the most explicit conventions in a repo.
+
+What worked: discovered it is a thin wrapper around `getTopFilesByRank()` which applies `isJunkPath()` — this function explicitly filters out paths matching `'eslint'`, `'prettier'`, and `'.config.'`. Config files must be read separately in the extraction pipeline, outside of `getConventionSamples`.
+
+Why it matters: an implementer who calls `getConventionSamples()` expecting config files will silently miss the richest source of explicit conventions with no error or warning. `server/src/modules/repo-intel/service.ts:630`.
