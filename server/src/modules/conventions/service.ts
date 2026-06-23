@@ -69,8 +69,8 @@ export class ConventionsService {
     // Wipe previous scan results before inserting fresh ones.
     await this.repo.deleteByRepo(workspaceId, repoId);
 
-    const emit = (type: RunEventKind, message: string, data?: unknown) =>
-      this.container.runBus.publish(scanId, type, message, data);
+    const emit = (type: string, message: string, data?: unknown) =>
+      this.container.runBus.publish(scanId, type as RunEventKind, message, data);
 
     const candidates = await extractConventions(
       this.container,
