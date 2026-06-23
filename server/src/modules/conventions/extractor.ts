@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { RunEventKind } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
 import { loadPromptTemplate } from '../../platform/prompts.js';
 import { resolveFeatureModel } from '../settings/feature-models.js';
@@ -23,7 +24,7 @@ export interface ExtractionCandidate {
   confidence: number;
 }
 
-export type EmitFn = (type: string, message: string, data?: unknown) => void;
+export type EmitFn = (type: RunEventKind, message: string, data?: unknown) => void;
 
 // Config files are NOT returned by getConventionSamples() — it filters them out
 // via junk-path rules. We must read them in a separate loop so that explicit
@@ -52,7 +53,7 @@ export async function extractConventions(
   // ── 1. Sample config files ───────────────────────────────────────────────
   // Config files live at the repo root and are excluded from getConventionSamples(),
   // so we read them explicitly here.
-  emit('sampling', 'Reading config files...');
+  emit('info', 'Reading config files...');
   const sampled = new Map<string, string>();
 
   for (const path of CONFIG_FILES) {
@@ -61,7 +62,7 @@ export async function extractConventions(
   }
 
   // ── 2. Sample source files ───────────────────────────────────────────────
-  emit('sampling', 'Reading source files...');
+  emit('info', 'Reading source files...');
   const sourcePaths = await container.repoIntel.getConventionSamples(repoId, 12);
 
   for (const path of sourcePaths) {
@@ -70,12 +71,12 @@ export async function extractConventions(
   }
 
   if (sampled.size === 0) {
-    emit('done', 'No readable files found', { count: 0 });
+    emit('result', 'No readable files found', { count: 0 });
     return [];
   }
 
   // ── 3. Call LLM ──────────────────────────────────────────────────────────
-  emit('analyzing', `Analyzing ${sampled.size} files...`);
+  emit('info', `Analyzing ${sampled.size} files...`);
 
   const { provider, model } = await resolveFeatureModel(container, workspaceId, 'conventions');
   const llm = await container.llm(provider);
@@ -110,7 +111,7 @@ export async function extractConventions(
 
   for (const c of rawCandidates) {
     idx += 1;
-    emit('verifying', `Verifying ${idx}/${rawCandidates.length}...`, {
+    emit('tool', `Verifying ${idx}/${rawCandidates.length}...`, {
       total: rawCandidates.length,
       done: idx,
     });
@@ -128,7 +129,7 @@ export async function extractConventions(
     });
   }
 
-  emit('done', `Found ${verified.length} verified conventions`, { count: verified.length });
+  emit('result', `Found ${verified.length} verified conventions`, { count: verified.length });
   return verified;
 }
 

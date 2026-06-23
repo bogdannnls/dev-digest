@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { Skill } from '@devdigest/shared';
+import type { RunEventKind, Skill } from '@devdigest/shared';
 import type { ConventionRow } from './repository.js';
 import { ConventionsRepository } from './repository.js';
 import { extractConventions } from './extractor.js';
@@ -53,7 +53,7 @@ export class ConventionsService {
     const scanId = `conv:${repoId}`;
 
     void this.runExtraction(workspaceId, repoId, repoRecord, scanId).catch((err) => {
-      this.container.runBus.publish(scanId, 'error' as never, (err as Error).message);
+      this.container.runBus.publish(scanId, 'error', (err as Error).message);
       this.container.runBus.complete(scanId);
     });
 
@@ -69,8 +69,8 @@ export class ConventionsService {
     // Wipe previous scan results before inserting fresh ones.
     await this.repo.deleteByRepo(workspaceId, repoId);
 
-    const emit = (type: string, message: string, data?: unknown) =>
-      this.container.runBus.publish(scanId, type as never, message, data);
+    const emit = (type: RunEventKind, message: string, data?: unknown) =>
+      this.container.runBus.publish(scanId, type, message, data);
 
     const candidates = await extractConventions(
       this.container,

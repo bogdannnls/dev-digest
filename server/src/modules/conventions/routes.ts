@@ -155,7 +155,7 @@ async function fetchRepo(
   repoId: string,
 ): Promise<{ owner: string; name: string; defaultBranch: string } | null> {
   const [row] = await container.db
-    .select()
+    .select({ owner: t.repos.owner, name: t.repos.name, defaultBranch: t.repos.defaultBranch })
     .from(t.repos)
     .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, repoId)));
   if (!row) return null;
