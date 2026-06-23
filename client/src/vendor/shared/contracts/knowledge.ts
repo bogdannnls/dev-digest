@@ -148,6 +148,8 @@ export const ConventionCandidate = z.object({
   rule: z.string(),
   evidence_path: z.string().nullish(),
   evidence_snippet: z.string().nullish(),
+  evidence_start_line: z.number().int().nullish(),
+  evidence_end_line: z.number().int().nullish(),
   confidence: z.number().min(0).max(1).nullish(),
   accepted: z.boolean(),
   created_at: z.string(),

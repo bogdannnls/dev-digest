@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ConventionCandidate, ConventionListResponse, Skill } from '@devdigest/shared';
+import type { ConventionCandidate, ConventionListResponse, Skill, SkillType } from '@devdigest/shared';
 import { apiFetch, API_BASE } from '../api.js';
 
 const keyList = (repoId: string) => ['conventions', repoId] as const;
@@ -30,9 +30,16 @@ export function useUpdateConvention(repoId: string) {
   });
 }
 
+export interface SkillOverride {
+  category: string;
+  name?: string;
+  description?: string;
+  type?: SkillType;
+}
+
 export function useCreateSkillsFromConventions(repoId: string) {
   return useMutation({
-    mutationFn: (opts?: { agent_id?: string }) =>
+    mutationFn: (opts?: { agent_id?: string; overrides?: SkillOverride[] }) =>
       apiFetch<{ skills: Skill[] }>(`/repos/${repoId}/conventions/to-skills`, {
         method: 'POST',
         body: JSON.stringify(opts ?? {}),

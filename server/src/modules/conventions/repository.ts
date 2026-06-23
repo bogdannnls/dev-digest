@@ -11,6 +11,8 @@ export interface InsertConvention {
   rule: string;
   evidencePath: string;
   evidenceSnippet: string;
+  evidenceStartLine: number | null;
+  evidenceEndLine: number | null;
   confidence: number;
 }
 
@@ -37,6 +39,8 @@ export class ConventionsRepository {
           rule: r.rule,
           evidencePath: r.evidencePath,
           evidenceSnippet: r.evidenceSnippet,
+          evidenceStartLine: r.evidenceStartLine,
+          evidenceEndLine: r.evidenceEndLine,
           confidence: r.confidence,
         })),
       )

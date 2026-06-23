@@ -130,7 +130,19 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
     {
       schema: {
         params: RepoParams,
-        body: z.object({ agent_id: z.string().uuid().optional() }),
+        body: z.object({
+          agent_id: z.string().uuid().optional(),
+          overrides: z
+            .array(
+              z.object({
+                category: z.string().min(1),
+                name: z.string().min(1).max(200).optional(),
+                description: z.string().max(500).optional(),
+                type: z.enum(['rubric', 'convention', 'security', 'custom']).optional(),
+              }),
+            )
+            .optional(),
+        }),
       },
     },
     async (req, reply) => {
@@ -143,6 +155,7 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
         req.params.id,
         repoSlug,
         req.body.agent_id,
+        req.body.overrides,
       );
       reply.status(201);
       return result;

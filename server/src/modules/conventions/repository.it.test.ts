@@ -32,6 +32,8 @@ d('ConventionsRepository', () => {
     rule: 'Always use async/await instead of .then() chains.',
     evidencePath: 'src/api/users.ts',
     evidenceSnippet: 'const user = await db.users.find(id);',
+    evidenceStartLine: 12,
+    evidenceEndLine: 12,
     confidence: 0.91,
   };
 

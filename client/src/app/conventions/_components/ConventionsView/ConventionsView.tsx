@@ -5,26 +5,42 @@ import { AppShell } from "../../../../components/app-shell";
 import { EmptyState, ErrorState, Skeleton, Button } from "@devdigest/ui";
 import { useConventions, useExtractConventions } from "../../../../lib/hooks/conventions";
 import { useRepos } from "../../../../lib/hooks/core";
+import { useToast } from "../../../../lib/toast";
 import { ConventionCard } from "./_components/ConventionCard/ConventionCard";
 import { ExtractionProgress } from "./_components/ExtractionProgress/ExtractionProgress";
 import { CreateSkillsModal } from "./_components/CreateSkillsModal/CreateSkillsModal";
 
 export function ConventionsView() {
   const { data: repos } = useRepos();
+  const toast = useToast();
   const [repoId, setRepoId] = React.useState<string | null>(null);
   const [showModal, setShowModal] = React.useState(false);
 
   const { data, isLoading, isError, refetch } = useConventions(repoId);
   const { extract, extracting, progress } = useExtractConventions(repoId ?? "");
 
+  const runExtract = React.useCallback(() => {
+    extract().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Extraction failed";
+      toast.error(`Scan failed: ${msg}`);
+    });
+  }, [extract, toast]);
+
   const candidates = data?.candidates ?? [];
   const acceptedCount = candidates.filter((c) => c.accepted).length;
   const selectedRepo = repos?.find((r: { id: string }) => r.id === repoId);
   const hasScanned = (data?.scanned_at ?? null) !== null;
+  const repoSource = selectedRepo
+    ? {
+        provider: selectedRepo.provider,
+        full_name: selectedRepo.full_name,
+        default_branch: selectedRepo.default_branch,
+      }
+    : null;
 
   return (
     <AppShell crumb={[{ label: "Skills Lab" }, { label: "Conventions" }]}>
-      <div style={{ padding: "24px 32px", maxWidth: 900 }}>
+      <div style={{ padding: "24px 32px" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, flex: 1 }}>
@@ -43,7 +59,7 @@ export function ConventionsView() {
           <Button
             kind="secondary"
             disabled={!repoId || extracting}
-            onClick={() => extract()}
+            onClick={runExtract}
           >
             {extracting ? "Scanning…" : hasScanned ? "Re-scan" : "Scan"}
           </Button>
@@ -85,7 +101,7 @@ export function ConventionsView() {
         )}
 
         {candidates.map((c) => (
-          <ConventionCard key={c.id} candidate={c} repoId={repoId!} />
+          <ConventionCard key={c.id} candidate={c} repoId={repoId!} repo={repoSource} />
         ))}
       </div>
 
@@ -94,6 +110,7 @@ export function ConventionsView() {
           repoId={repoId}
           repoSlug={`${selectedRepo.owner}-${selectedRepo.name}`}
           candidates={candidates.filter((c) => c.accepted)}
+          repo={repoSource}
           onClose={() => setShowModal(false)}
         />
       )}
