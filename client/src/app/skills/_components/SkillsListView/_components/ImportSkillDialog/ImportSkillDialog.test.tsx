@@ -123,6 +123,14 @@ describe("ImportSkillDialog", () => {
     await waitFor(() => expect(screen.getByText(/couldn't parse the file/i)).toBeInTheDocument());
   });
 
+  it("renders the type field as a select in the preview", async () => {
+    render(wrap(<ImportSkillDialog open={true} onClose={() => {}} />));
+    await userEvent.upload(screen.getByLabelText(/Choose a .md file/i) as HTMLInputElement, makeFile());
+    await waitFor(() => screen.getByText(/someone else's instructions/i));
+    const typeField = screen.getByLabelText(/Type/i);
+    expect(typeField.tagName).toBe("SELECT");
+  });
+
   it("Cancel calls onClose without saving", async () => {
     const onClose = vi.fn();
     const createMutateAsync = vi.fn().mockResolvedValue({ id: "new-id" });
