@@ -89,9 +89,20 @@
   },
   "skills": {
     "title": "Skills",
-    "enabledCount": "{linked} of {total} enabled",
+    "enabledCount": "{enabled} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder.",
+    "addSkill": "Add skill",
+    "removeFromAgent": "Remove from agent",
+    "emptyTitle": "No skills linked yet",
+    "emptyBody": "Skills are reusable directives appended to this agent's system prompt. Add one to start.",
+    "picker": {
+      "title": "Add a skill",
+      "subtitle": "Workspace skills not yet linked to this agent.",
+      "searchPlaceholder": "Search skills…",
+      "noUnlinked": "All workspace skills are already linked.",
+      "createSkill": "Create a new skill"
+    }
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
