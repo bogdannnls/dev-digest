@@ -142,7 +142,10 @@ export class BitbucketClient implements ForgeClient {
           lines_removed: number;
         }>;
       }>(`/repositories/${repo.owner}/${repo.name}/pullrequests/${n}/diffstat`),
-      this.call<string>(`/repositories/${repo.owner}/${repo.name}/pullrequests/${n}/diff`).catch(() => ''),
+      fetch(
+        `${BASE}/repositories/${repo.owner}/${repo.name}/pullrequests/${n}/diff`,
+        { headers: { Authorization: this.authHeader, Accept: 'text/plain' } },
+      ).then((r) => (r.ok ? r.text() : Promise.resolve(''))).catch(() => ''),
       this.paginate<{
         hash: string;
         message: string;
@@ -194,7 +197,7 @@ export class BitbucketClient implements ForgeClient {
   }
 
   private async resolveLinkedIssue(repo: RepoRef, body: string): Promise<IssueMeta | undefined> {
-    const m = body.match(/(?:closes|fixes|resolves)?\s*#(\d+)/i);
+    const m = body.match(/(?:closes|fixes|resolves)\s+#(\d+)/i);
     if (!m?.[1]) return undefined;
     try {
       return await this.getIssue(repo, Number(m[1]));
@@ -341,8 +344,9 @@ export class BitbucketClient implements ForgeClient {
   }
 
   async findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null> {
+    const q = encodeURIComponent(`source.branch.name="${branch}" AND state="OPEN"`);
     const result = await this.call<{ values: Array<{ links: { html: { href: string } } }> }>(
-      `/repositories/${repo.owner}/${repo.name}/pullrequests?q=source.branch.name="${encodeURIComponent(branch)}"+AND+state="OPEN"&pagelen=1`,
+      `/repositories/${repo.owner}/${repo.name}/pullrequests?q=${q}&pagelen=1`,
     );
     const pr = result.values[0];
     return pr ? { url: pr.links.html.href } : null;

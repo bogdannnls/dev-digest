@@ -90,6 +90,94 @@ describe('BitbucketClient (OAuth token)', () => {
     vi.stubGlobal('fetch', fetchSpy);
     await expect(client.getIssue(REPO, 999)).rejects.toMatchObject({ code: 'not_found', statusCode: 404 });
   });
+
+  it('getPullRequest returns detail with file patches', async () => {
+    const prResponse = {
+      id: 1, title: 'Test PR',
+      author: { nickname: 'dev' },
+      source: { branch: { name: 'feature' }, commit: { hash: 'abc123' } },
+      destination: { branch: { name: 'main' } },
+      state: 'OPEN',
+      created_on: '2024-01-01T00:00:00Z',
+      updated_on: '2024-01-02T00:00:00Z',
+      description: 'fixes #5',
+    };
+    const diffstatResponse = {
+      values: [{ new: { path: 'src/foo.ts' }, lines_added: 2, lines_removed: 1 }],
+    };
+    const diffText = 'diff --git a/src/foo.ts b/src/foo.ts\n--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new\n';
+    const commitsResponse = {
+      values: [{
+        hash: 'abc123', message: 'feat: add thing', date: '2024-01-01T00:00:00Z',
+        author: { user: { nickname: 'dev' } },
+      }],
+    };
+    const issueResponse = {
+      id: 5, title: 'The issue', content: { raw: 'desc' }, state: 'open',
+    };
+
+    fetchSpy = vi.fn().mockImplementation((url: string) => {
+      // Order matters: /diffstat must be checked before /diff to avoid substring collision
+      if (url.includes('/diffstat')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(diffstatResponse) });
+      }
+      // /diff endpoint returns text/plain (not JSON)
+      if (url.includes('/pullrequests/1/diff')) {
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(diffText) });
+      }
+      if (url.includes('/commits')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(commitsResponse) });
+      }
+      if (url.includes('/issues/5')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(issueResponse) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(prResponse) });
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const detail = await client.getPullRequest(REPO, 1);
+    expect(detail.number).toBe(1);
+    expect(detail.files).toHaveLength(1);
+    expect(detail.files[0]!.path).toBe('src/foo.ts');
+    expect(detail.files[0]!.patch).not.toBeNull();
+    expect(detail.commits).toHaveLength(1);
+    expect(detail.linked_issue?.number).toBe(5);
+  });
+
+  it('findOpenPr encodes branch name correctly', async () => {
+    fetchSpy = mockFetch({ values: [{ links: { html: { href: 'https://bb.org/pr/1' } } }] });
+    vi.stubGlobal('fetch', fetchSpy);
+    const result = await client.findOpenPr(REPO, 'feature/my-branch');
+    expect(result?.url).toBe('https://bb.org/pr/1');
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    // Verify the branch name is properly encoded in the query
+    expect(calledUrl).toContain('q=');
+    expect(calledUrl).not.toContain('feature/my-branch'); // slash should be encoded
+  });
+
+  it('listReviewComments returns only inline comments', async () => {
+    fetchSpy = mockFetch({
+      values: [
+        {
+          id: 1, content: { raw: 'inline comment' }, created_on: '2024-01-01T00:00:00Z',
+          author: { nickname: 'dev' },
+          inline: { path: 'src/foo.ts', to: 10 },
+          links: { html: { href: 'https://bb.org/comment/1' } },
+        },
+        {
+          id: 2, content: { raw: 'general comment' }, created_on: '2024-01-01T00:00:00Z',
+          author: { nickname: 'dev' },
+          links: { html: { href: 'https://bb.org/comment/2' } },
+          // no inline field
+        },
+      ],
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const comments = await client.listReviewComments(REPO, 1);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.path).toBe('src/foo.ts');
+    expect(comments[0]!.line).toBe(10);
+  });
 });
 
 describe('BitbucketClient (App Password)', () => {
