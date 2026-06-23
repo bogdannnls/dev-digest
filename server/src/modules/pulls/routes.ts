@@ -115,9 +115,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     let gh: ForgeClient | null = null;
     try {
-      gh = await container.forgeClient('github');
+      gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
     } catch (err) {
-      app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
+      app.log.warn({ err }, 'Forge client unavailable (no token / offline); serving persisted PRs');
     }
 
     // Local-first: sync from GitHub when a token is configured, but never
@@ -155,7 +155,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
             });
         }
       } catch (err) {
-        app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+        app.log.warn({ err }, 'Forge PR sync skipped (no token / offline); serving persisted PRs');
       }
     }
 
@@ -266,7 +266,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
     try {
-      const gh = await container.forgeClient('github');
+      const gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -308,7 +308,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { findings: _adapterFindings, ...detailRest } = detail;
       return { ...detailRest, id: pr.id, findings };
     } catch (err) {
-      app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
+      app.log.warn({ err }, 'Forge PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
       const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
       return {
@@ -366,9 +366,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
       let gh: ForgeClient;
       try {
-        gh = await container.forgeClient('github');
+        gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       } catch (err) {
-        app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
+        app.log.warn({ err }, 'Forge client unavailable; serving no PR comments');
         return [];
       }
       try {
@@ -389,11 +389,11 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const input = req.body;
       let gh: ForgeClient;
       try {
-        gh = await container.forgeClient('github');
+        gh = await container.forgeClient(repo.provider as 'github' | 'bitbucket');
       } catch {
         throw new AppError(
-          'github_unavailable',
-          'Connect a GitHub token to post comments.',
+          'forge_unavailable',
+          'Connect a forge token to post comments.',
           400,
         );
       }
