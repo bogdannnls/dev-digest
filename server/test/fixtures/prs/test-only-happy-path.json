@@ -1,0 +1,6 @@
+{
+  "id": "test-only-happy-path",
+  "title": "Add discount calculation + happy-path test",
+  "notes": "Test Quality target: should flag the missing branch coverage (negative discount, > 100% discount, zero-price item).",
+  "diff": "diff --git a/src/discount.ts b/src/discount.ts\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/src/discount.ts\n@@ -0,0 +1,7 @@\n+export function applyDiscount(price: number, percent: number): number {\n+  if (percent <= 0) return price;\n+  if (percent >= 100) return 0;\n+  return Math.round(price * (1 - percent / 100));\n+}\n+\n+\ndiff --git a/test/discount.test.ts b/test/discount.test.ts\nnew file mode 100644\nindex 0000000..2222222\n--- /dev/null\n+++ b/test/discount.test.ts\n@@ -0,0 +1,8 @@\n+import { describe, it, expect } from 'vitest';\n+import { applyDiscount } from '../src/discount';\n+\n+describe('applyDiscount', () => {\n+  it('applies a normal discount', () => {\n+    expect(applyDiscount(100, 20)).toBe(80);\n+  });\n+});\n"
+}
