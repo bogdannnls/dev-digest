@@ -40,6 +40,7 @@ describe('routes (no DB)', () => {
   it('POST /settings/test-connection (bitbucket) returns structured ConnTestResult', async () => {
     const app = await buildApp({
       config,
+      // MockGitHubClient implements ForgeClient — fine as a stub for any provider
       overrides: { forge: { bitbucket: new MockGitHubClient({ login: 'bbuser' }) } },
     });
     const res = await app.inject({
