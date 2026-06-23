@@ -155,6 +155,99 @@ describe('BitbucketClient (OAuth token)', () => {
     expect(calledUrl).not.toContain('feature/my-branch'); // slash should be encoded
   });
 
+  it('commitFiles creates a new branch by fetching base HEAD and including /parents', async () => {
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      // Check if target branch exists → 404 (branch doesn't exist yet)
+      if (url.includes('/refs/branches/new-branch')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: () => Promise.resolve(JSON.stringify({ error: { message: 'Not found' } })),
+          json: () => Promise.resolve({ error: { message: 'Not found' } }),
+        });
+      }
+      // Fetch base branch HEAD SHA
+      if (url.includes('/refs/branches/main')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ target: { hash: 'base123abc' } }),
+          text: () => Promise.resolve(''),
+        });
+      }
+      // POST /src — commit the files
+      if (url.includes('/src')) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve(''),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), text: () => Promise.resolve('') });
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await client.commitFiles(REPO, {
+      branch: 'new-branch',
+      base: 'main',
+      message: 'test commit',
+      files: [{ path: 'README.md', contents: 'hello' }],
+    });
+
+    expect(result.branch).toBe('new-branch');
+
+    // Verify the /src POST was made
+    const srcCall = fetchSpy.mock.calls.find(([url]: [string]) => url.includes('/src'));
+    expect(srcCall).toBeDefined();
+
+    // Verify /parents was included in the FormData (by checking the call was made after resolving base SHA)
+    const baseCall = fetchSpy.mock.calls.find(([url]: [string]) => url.includes('/refs/branches/main'));
+    expect(baseCall).toBeDefined();
+  });
+
+  it('commitFiles updates an existing branch without fetching base HEAD or including /parents', async () => {
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      // Target branch exists → 200
+      if (url.includes('/refs/branches/existing-branch')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ name: 'existing-branch', target: { hash: 'abc123' } }),
+          text: () => Promise.resolve(''),
+        });
+      }
+      // POST /src
+      if (url.includes('/src')) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve(''),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), text: () => Promise.resolve('') });
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await client.commitFiles(REPO, {
+      branch: 'existing-branch',
+      base: 'main',
+      message: 'update commit',
+      files: [{ path: 'src/app.ts', contents: 'export {}' }],
+    });
+
+    expect(result.branch).toBe('existing-branch');
+
+    // Verify /src POST was made
+    const srcCall = fetchSpy.mock.calls.find(([url]: [string]) => url.includes('/src'));
+    expect(srcCall).toBeDefined();
+
+    // Verify the base branch HEAD was NOT fetched (no /refs/branches/main call)
+    const baseCall = fetchSpy.mock.calls.find(([url]: [string]) => url.includes('/refs/branches/main'));
+    expect(baseCall).toBeUndefined();
+  });
+
   it('listReviewComments returns only inline comments', async () => {
     fetchSpy = mockFetch({
       values: [

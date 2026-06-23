@@ -78,6 +78,13 @@
       "when": 1782240599391,
       "tag": "0010_first_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1750636800000,
+      "tag": "0011_add_provider_check",
+      "breakpoints": true
     }
   ]
 }
