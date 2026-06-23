@@ -70,5 +70,23 @@
     "unsavedConfirm": "Discard",
     "unsavedBody": "You have unsaved edits. Leave the page anyway?",
     "unsavedTitle": "Discard changes?"
+  },
+  "import": {
+    "title": "Import a skill",
+    "subtitle": "Upload a Markdown file from another workspace or a teammate.",
+    "drop": "Choose a .md file…",
+    "hint": "Markdown only, max 256KB",
+    "trustBanner": "You're about to add someone else's instructions to your agents' prompts. Read the body below before saving. You can edit anything after import.",
+    "parseError": "We couldn't parse the file. Make sure it's valid Markdown.",
+    "tooLarge": "File too large. The maximum is 256KB.",
+    "wrongExt": "Only .md files are supported.",
+    "warningsLabel": "Heads up:",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "nameLabel": "Name",
+    "typeLabel": "Type",
+    "descriptionLabel": "Description",
+    "bodyLabel": "Body preview"
   }
 }
