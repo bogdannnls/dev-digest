@@ -155,4 +155,103 @@ d('agent_skills.enabled', () => {
     ]);
     await app.close();
   });
+
+  it('PATCH /agents/:id/skills/:skillId toggles enabled and returns the list', async () => {
+    const app = await makeApp();
+    const repo = new AgentsRepository(pg.handle.db);
+    const agentId = await createAgent(app);
+    const skillId = await createSkill(app, 'patch-target');
+    await repo.linkSkill(agentId, skillId, 0);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/agents/${agentId}/skills/${skillId}`,
+      payload: { enabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const links = res.json();
+    expect(links).toEqual([
+      { agent_id: agentId, skill_id: skillId, order: 0, enabled: false },
+    ]);
+    await app.close();
+  });
+
+  it('PATCH returns 404 when the link does not exist', async () => {
+    const app = await makeApp();
+    const agentId = await createAgent(app);
+    const skillId = await createSkill(app, 'unlinked');
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/agents/${agentId}/skills/${skillId}`,
+      payload: { enabled: true },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('PATCH returns 404 when the agent does not exist (and never touches the DB)', async () => {
+    const app = await makeApp();
+    const skillId = await createSkill(app, 'orphan');
+    const fakeAgentId = '00000000-0000-0000-0000-000000000000';
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/agents/${fakeAgentId}/skills/${skillId}`,
+      payload: { enabled: false },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('DELETE /agents/:id/skills/:skillId unlinks and returns the updated list', async () => {
+    const app = await makeApp();
+    const repo = new AgentsRepository(pg.handle.db);
+    const agentId = await createAgent(app);
+    const sA = await createSkill(app, 'del-A');
+    const sB = await createSkill(app, 'del-B');
+    await repo.linkSkill(agentId, sA, 0);
+    await repo.linkSkill(agentId, sB, 1);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/agents/${agentId}/skills/${sA}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const links = res.json();
+    expect(links).toEqual([
+      { agent_id: agentId, skill_id: sB, order: 1, enabled: true },
+    ]);
+    await app.close();
+  });
+
+  it('DELETE returns 404 when the agent is missing', async () => {
+    const app = await makeApp();
+    const skillId = await createSkill(app, 'lonely');
+    const fakeAgentId = '00000000-0000-0000-0000-000000000000';
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/agents/${fakeAgentId}/skills/${skillId}`,
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('POST /agents/:id/skills with { skill_id, enabled: false } links a disabled skill', async () => {
+    const app = await makeApp();
+    const agentId = await createAgent(app);
+    const skillId = await createSkill(app, 'post-disabled');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/agents/${agentId}/skills`,
+      payload: { skill_id: skillId, enabled: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([
+      { agent_id: agentId, skill_id: skillId, order: 0, enabled: false },
+    ]);
+    await app.close();
+  });
 });

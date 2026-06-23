@@ -62,10 +62,18 @@ const SetSkillsBody = z
     skill_ids: z.array(z.string().uuid()).optional(),
     skill_id: z.string().uuid().optional(),
     order: z.number().int().optional(),
+    enabled: z.boolean().optional(),
   })
   .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
   });
+
+const SkillLinkParams = z.object({
+  id: z.string().uuid(),
+  skillId: z.string().uuid(),
+});
+
+const ToggleSkillEnabledBody = z.object({ enabled: z.boolean() });
 
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -158,7 +166,44 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
       const links =
         body.skill_ids !== undefined
           ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+          : await service.linkSkill(
+              workspaceId,
+              req.params.id,
+              body.skill_id!,
+              body.order,
+              body.enabled,
+            );
+      if (!links) throw new NotFoundError('Agent not found');
+      return links;
+    },
+  );
+
+  app.patch(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams, body: ToggleSkillEnabledBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.setSkillEnabled(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+        req.body.enabled,
+      );
+      if (!links) throw new NotFoundError('Agent or skill link not found');
+      return links;
+    },
+  );
+
+  app.delete(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.unlinkSkill(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+      );
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },
