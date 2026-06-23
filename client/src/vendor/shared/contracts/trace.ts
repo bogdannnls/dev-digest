@@ -6,7 +6,7 @@ import { z } from 'zod';
  * during the run; the full log is written once on completion.
  */
 
-export const RunEventKind = z.enum(['info', 'tool', 'result', 'error']);
+export const RunEventKind = z.enum(['info', 'tool', 'result', 'error', 'sampling', 'analyzing', 'verifying', 'done']);
 export type RunEventKind = z.infer<typeof RunEventKind>;
 
 /** A single live-log line. `t` = elapsed timestamp string (e.g. "00.31"). */

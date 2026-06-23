@@ -43,7 +43,9 @@ export default async function conventionsRoutes(appBase: FastifyInstance) {
     '/repos/:id/conventions/events/:scanId',
     { schema: { params: ScanParams }, config: { rateLimit: false } },
     async (req, reply) => {
-      await getContext(app.container, req);
+      const { workspaceId } = await getContext(app.container, req);
+      const repo = await fetchRepo(app.container, workspaceId, req.params.id);
+      if (!repo) throw new NotFoundError('Repo not found');
       const { scanId } = req.params;
 
       // Bridge the in-memory RunBus to an async iterator the SSE plugin drains.

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Container } from '../../platform/container.js';
 import type { RunEventKind, Skill } from '@devdigest/shared';
 import type { ConventionRow } from './repository.js';
@@ -50,7 +51,7 @@ export class ConventionsService {
     repoId: string,
     repoRecord: { owner: string; name: string; defaultBranch: string },
   ): Promise<string> {
-    const scanId = `conv:${repoId}`;
+    const scanId = randomUUID();
 
     void this.runExtraction(workspaceId, repoId, repoRecord, scanId).catch((err) => {
       this.container.runBus.publish(scanId, 'error', (err as Error).message);

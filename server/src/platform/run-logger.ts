@@ -31,6 +31,11 @@ const LEVEL: Record<RunEventKind, keyof PinoLike> = {
   tool: 'debug',
   result: 'info',
   error: 'error',
+  // Conventions-extraction progress events — informational.
+  sampling: 'info',
+  analyzing: 'info',
+  verifying: 'info',
+  done: 'info',
 };
 
 export class RunLogger {
