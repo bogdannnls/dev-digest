@@ -81,3 +81,23 @@ Why it matters: a column existing + a repo projecting it + tests covering CRUD d
 Context: Spec D's `POST /agents/:id/skills-eval` endpoint reads PR fixtures from `server/test/fixtures/prs/*.json` via `import.meta.url`-relative path resolution (`server/src/modules/agents/eval-fixtures.ts:22`).
 What we tried: this works in `pnpm dev` (tsx) and in vitest. It was not exercised under `pnpm build && node dist/server.js`.
 Why it matters: a `tsc` compile emits `dist/` but doesn't copy non-TS files. The `../../../test/fixtures/prs` path resolves outside the `dist/` tree at runtime and would throw on the first eval request in a compiled deployment. Today's deploy path is `tsx`-based, so this is latent — but if we ever ship a tsc-compiled server, the loader needs to move (fixtures under `src/`, plus a build step that copies `.json` files) or be replaced with TS modules exporting the fixtures as string constants.
+
+## 2026-06-23 — Bitbucket `/diff` endpoint returns `text/plain`, not JSON
+
+Context: implementing `BitbucketClient.getPullRequest()` — the diff is fetched from `/repositories/{ws}/{repo}/pullrequests/{id}/diff`.
+
+What we tried: routing the call through the shared `call<T>()` helper (`server/src/adapters/bitbucket/rest.ts`), which sets `Accept: application/json` and calls `res.json()`.
+
+What worked: bypassing `call()` entirely — raw `fetch(url, { headers: { Accept: 'text/plain', Authorization: ... } }).then(r => r.text())`. The `call()` helper silently returned an empty string because `res.json()` on a `text/plain` body throws a SyntaxError that the `.catch(() => '')` fallback swallows.
+
+Why it matters: the failure mode is a silent empty diff — every PR review succeeds but shows zero diff context, no error logged. Any future Bitbucket endpoint that returns non-JSON (raw file content, patch streams) hits the same trap. When adding Bitbucket API calls, check the response `Content-Type` in Bitbucket's docs before routing through `call()`.
+
+## 2026-06-23 — Drizzle `text({ enum: [...] })` produces no SQL CHECK constraint
+
+Context: adding a `provider` column to `repos` — `text('provider', { enum: ['github', 'bitbucket'] }).notNull().default('github')` (`server/src/db/schema/repos.ts`).
+
+What we tried: trusting the generated migration. It produced `provider text NOT NULL DEFAULT 'github'` — no `CHECK` constraint.
+
+What worked: adding a second hand-written migration with `ALTER TABLE "repos" ADD CONSTRAINT "repos_provider_check" CHECK (provider IN ('github', 'bitbucket'))`. The Drizzle `enum` option on `text()` columns is TypeScript-only; it does not emit a SQL-level constraint. Only `pgEnum()` (which creates a Postgres `CREATE TYPE`) gets database enforcement.
+
+Why it matters: without the CHECK, invalid provider values are accepted silently at the DB layer and surface only as TypeScript errors in application code — no runtime rejection, no migration failure. Any future `text({ enum })` column that needs DB-level integrity requires the same manual step: generate the schema migration, then add a second hand-written migration for the CHECK.
