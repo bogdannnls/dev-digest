@@ -94,12 +94,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     if (buffer.length > 256 * 1024) {
       throw new ValidationError('File too large (max 256KB).', { code: 'too_large' });
     }
-    let text: string;
-    try {
-      text = buffer.toString('utf8');
-    } catch {
-      throw new ValidationError('File must be UTF-8 encoded.', { code: 'invalid_encoding' });
-    }
+    const text = buffer.toString('utf8');
     return service.parseImport(text, data.filename);
   });
 }
