@@ -96,6 +96,8 @@
     "removeFromAgent": "Remove from agent",
     "emptyTitle": "No skills linked yet",
     "emptyBody": "Skills are reusable directives appended to this agent's system prompt. Add one to start.",
+    "evalButton": "Compare with vs without skills",
+    "evalEmpty": "Link at least one enabled skill to compare.",
     "picker": {
       "title": "Add a skill",
       "subtitle": "Workspace skills not yet linked to this agent.",
@@ -106,5 +108,26 @@
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "eval": {
+    "title": "Skills A/B",
+    "subtitle": "Run this agent on a packaged PR fixture, once with linked skills and once without. Two LLM calls.",
+    "fixtureLabel": "PR fixture",
+    "run": "Run comparison",
+    "running": "Running…",
+    "withColumn": "With skills",
+    "withoutColumn": "Without skills",
+    "noFindings": "No findings",
+    "badge": {
+      "new": "NEW",
+      "missing": "MISSING"
+    },
+    "tokens": "{n} tokens",
+    "cost": "${cost}",
+    "noFixtures": "No fixtures available.",
+    "error": "Could not run the comparison.",
+    "retry": "Retry",
+    "close": "Close",
+    "cancel": "Cancel"
   }
 }
