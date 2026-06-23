@@ -28,6 +28,11 @@ import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { SkillsService } from '../modules/skills/service.js';
+import { AgentsService } from '../modules/agents/service.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
+import type { SkillsPort, AgentsPort } from '../modules/_shared/ports.js';
+import type { FeatureModelChoice, FeatureModelId } from '@devdigest/shared';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -52,6 +57,14 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Cross-module ports — tests inject in-memory implementations. */
+  skills?: SkillsPort;
+  agents?: AgentsPort;
+  /** Override resolveFeatureModel for tests that don't seed the settings table. */
+  featureModelResolver?: (
+    workspaceId: string,
+    id: FeatureModelId,
+  ) => Promise<FeatureModelChoice>;
 }
 
 export class Container {
@@ -77,6 +90,8 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _skills?: SkillsPort;
+  private _agents?: AgentsPort;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -130,6 +145,39 @@ export class Container {
     if (this.overrides.tokenizer) return this.overrides.tokenizer;
     this._tokenizer ??= new TiktokenTokenizer();
     return this._tokenizer;
+  }
+
+  /**
+   * Skills port. Conventions (and any future module) consumes the skills
+   * capability through this port instead of importing SkillsService directly,
+   * keeping module-to-module dependencies one-way through the container.
+   */
+  get skills(): SkillsPort {
+    if (this.overrides.skills) return this.overrides.skills;
+    this._skills ??= new SkillsService(this);
+    return this._skills;
+  }
+
+  /** Agents port. Same rationale as `skills` — single source of cross-module wiring. */
+  get agents(): AgentsPort {
+    if (this.overrides.agents) return this.overrides.agents;
+    this._agents ??= new AgentsService(this);
+    return this._agents;
+  }
+
+  /**
+   * Resolve `id` to a concrete provider+model for this workspace: workspace
+   * override, else the registry default. Cross-module callers (e.g. conventions
+   * extractor) use this instead of importing from `modules/settings/`.
+   */
+  async resolveFeatureModel(
+    workspaceId: string,
+    id: FeatureModelId,
+  ): Promise<FeatureModelChoice> {
+    if (this.overrides.featureModelResolver) {
+      return this.overrides.featureModelResolver(workspaceId, id);
+    }
+    return resolveFeatureModel(this, workspaceId, id);
   }
 
   /**

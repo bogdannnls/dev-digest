@@ -4,8 +4,6 @@ import type { RunEventKind, Skill } from '@devdigest/shared';
 import type { ConventionRow } from './repository.js';
 import { ConventionsRepository } from './repository.js';
 import { extractConventions } from './extractor.js';
-import { SkillsService } from '../skills/service.js';
-import { AgentsService } from '../agents/service.js';
 
 export interface ConventionDto {
   id: string;
@@ -13,6 +11,8 @@ export interface ConventionDto {
   rule: string;
   evidence_path: string | null;
   evidence_snippet: string | null;
+  evidence_start_line: number | null;
+  evidence_end_line: number | null;
   confidence: number | null;
   accepted: boolean;
   created_at: string;
@@ -25,6 +25,8 @@ function toDto(row: ConventionRow): ConventionDto {
     rule: row.rule,
     evidence_path: row.evidencePath ?? null,
     evidence_snippet: row.evidenceSnippet ?? null,
+    evidence_start_line: row.evidenceStartLine ?? null,
+    evidence_end_line: row.evidenceEndLine ?? null,
     confidence: row.confidence ?? null,
     accepted: row.accepted,
     created_at: row.createdAt.toISOString(),
@@ -33,13 +35,9 @@ function toDto(row: ConventionRow): ConventionDto {
 
 export class ConventionsService {
   private repo: ConventionsRepository;
-  private skills: SkillsService;
-  private agents: AgentsService;
 
   constructor(private container: Container) {
     this.repo = new ConventionsRepository(container.db);
-    this.skills = new SkillsService(container);
-    this.agents = new AgentsService(container);
   }
 
   /**
@@ -136,6 +134,12 @@ export class ConventionsService {
     repoId: string,
     repoSlug: string,
     agentId?: string,
+    overrides?: Array<{
+      category: string;
+      name?: string;
+      description?: string;
+      type?: 'rubric' | 'convention' | 'security' | 'custom';
+    }>,
   ): Promise<{ skills: Skill[] }> {
     const { candidates } = await this.repo.listByRepo(workspaceId, repoId, { accepted: true });
     if (candidates.length === 0) return { skills: [] };
@@ -148,14 +152,23 @@ export class ConventionsService {
       groups.set(c.category, g);
     }
 
+    const overridesByCategory = new Map(
+      (overrides ?? []).map((o) => [o.category, o]),
+    );
+
     const createdSkills: Skill[] = [];
 
     for (const [category, items] of groups) {
       const body = buildSkillBody(category, repoSlug, items);
-      const skill = await this.skills.create(workspaceId, {
-        name: `${repoSlug}-${category}`,
-        description: `${items.length} ${category} convention${items.length > 1 ? 's' : ''} from ${repoSlug}`,
-        type: 'convention',
+      const override = overridesByCategory.get(category);
+      const name = override?.name?.trim() || `${repoSlug}-${category}`;
+      const description =
+        override?.description?.trim() ||
+        `${items.length} ${category} convention${items.length > 1 ? 's' : ''} from ${repoSlug}`;
+      const skill = await this.container.skills.create(workspaceId, {
+        name,
+        description,
+        type: override?.type ?? 'convention',
         source: 'extracted',
         body,
       });
@@ -164,7 +177,7 @@ export class ConventionsService {
 
     if (agentId) {
       for (const skill of createdSkills) {
-        await this.agents.linkSkill(workspaceId, agentId, skill.id);
+        await this.container.agents.linkSkill(workspaceId, agentId, skill.id);
       }
     }
 
@@ -182,8 +195,14 @@ function buildSkillBody(category: string, repoSlug: string, items: ConventionRow
   for (const item of items) {
     lines.push(`## ${item.rule}`, '');
     if (item.evidencePath && item.evidenceSnippet) {
+      const lineRef =
+        item.evidenceStartLine != null
+          ? item.evidenceEndLine && item.evidenceEndLine !== item.evidenceStartLine
+            ? `:${item.evidenceStartLine}-${item.evidenceEndLine}`
+            : `:${item.evidenceStartLine}`
+          : '';
       lines.push(
-        `Detected in \`${item.evidencePath}\`:`,
+        `Detected in \`${item.evidencePath}${lineRef}\`:`,
         '',
         '```',
         item.evidenceSnippet,

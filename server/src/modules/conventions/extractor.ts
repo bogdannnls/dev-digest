@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { Container } from '../../platform/container.js';
 import { loadPromptTemplate } from '../../platform/prompts.js';
-import { resolveFeatureModel } from '../settings/feature-models.js';
 
 const EXTRACTION_SCHEMA = z.object({
   candidates: z.array(
@@ -20,6 +19,8 @@ export interface ExtractionCandidate {
   rule: string;
   evidencePath: string;
   evidenceSnippet: string;
+  evidenceStartLine: number;
+  evidenceEndLine: number;
   confidence: number;
 }
 
@@ -77,7 +78,7 @@ export async function extractConventions(
   // ── 3. Call LLM ──────────────────────────────────────────────────────────
   emit('analyzing', `Analyzing ${sampled.size} files...`);
 
-  const { provider, model } = await resolveFeatureModel(container, workspaceId, 'conventions');
+  const { provider, model } = await container.resolveFeatureModel(workspaceId, 'conventions');
   const llm = await container.llm(provider);
 
   const systemPrompt = await loadPromptTemplate('conventions-extract.system.md');
@@ -117,13 +118,20 @@ export async function extractConventions(
 
     const fileContent = sampled.get(c.evidence_path);
     if (!fileContent) continue; // path not in sampled set → reject
-    if (!fileContent.includes(c.evidence_snippet)) continue; // snippet not verbatim → reject
+    const snippetIdx = fileContent.indexOf(c.evidence_snippet);
+    if (snippetIdx < 0) continue; // snippet not verbatim → reject
+
+    // 1-based line numbers: count newlines before the match for start, plus snippet line span for end.
+    const startLine = fileContent.slice(0, snippetIdx).split('\n').length;
+    const endLine = startLine + c.evidence_snippet.split('\n').length - 1;
 
     verified.push({
       category: c.category,
       rule: c.rule,
       evidencePath: c.evidence_path,
       evidenceSnippet: c.evidence_snippet,
+      evidenceStartLine: startLine,
+      evidenceEndLine: endLine,
       confidence: c.confidence,
     });
   }

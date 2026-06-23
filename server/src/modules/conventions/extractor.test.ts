@@ -7,13 +7,6 @@ vi.mock('../../platform/prompts.js', () => ({
   loadPromptTemplate: vi.fn().mockResolvedValue('You are a coding convention detector.'),
 }));
 
-// Mock feature-models so tests don't need a DB
-vi.mock('../settings/feature-models.js', () => ({
-  resolveFeatureModel: vi
-    .fn()
-    .mockResolvedValue({ provider: 'openai', model: 'gpt-4o' }),
-}));
-
 const mockEmit = vi.fn();
 
 const SAMPLE_CONTENT = `const result = await db.users.find(id);
@@ -33,6 +26,9 @@ function makeContainer(candidates: unknown[] = []): Partial<Container> {
         data: { candidates },
       }),
     }),
+    resolveFeatureModel: vi
+      .fn()
+      .mockResolvedValue({ provider: 'openai', model: 'gpt-4o' }),
   };
 }
 
@@ -62,7 +58,34 @@ describe('extractConventions', () => {
     const first = result[0]!;
     expect(first.category).toBe('async-style');
     expect(first.confidence).toBe(0.91);
+    // Snippet is line 1 of SAMPLE_CONTENT, single-line.
+    expect(first.evidenceStartLine).toBe(1);
+    expect(first.evidenceEndLine).toBe(1);
     expect(mockEmit).toHaveBeenCalledWith('done', expect.any(String), { count: 1 });
+  });
+
+  it('computes 1-based start/end lines for a multi-line snippet', async () => {
+    const container = makeContainer([
+      {
+        category: 'async-style',
+        rule: 'Sequential awaits',
+        evidence_path: 'src/api/users.ts',
+        evidence_snippet: SAMPLE_CONTENT, // both lines
+        confidence: 0.9,
+      },
+    ]);
+
+    const result = await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.evidenceStartLine).toBe(1);
+    expect(result[0]!.evidenceEndLine).toBe(2);
   });
 
   it('discards candidates whose snippet is NOT in the sampled content', async () => {
