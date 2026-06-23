@@ -144,13 +144,21 @@ export type CommunitySkill = z.infer<typeof CommunitySkill>;
 // ---- Conventions ----
 export const ConventionCandidate = z.object({
   id: z.string(),
+  category: z.string(),
   rule: z.string(),
-  evidence_path: z.string(),
-  evidence_snippet: z.string(),
-  confidence: z.number().min(0).max(1),
+  evidence_path: z.string().nullish(),
+  evidence_snippet: z.string().nullish(),
+  confidence: z.number().min(0).max(1).nullish(),
   accepted: z.boolean(),
+  created_at: z.string(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+export const ConventionListResponse = z.object({
+  candidates: z.array(ConventionCandidate),
+  scanned_at: z.string().nullable(),
+});
+export type ConventionListResponse = z.infer<typeof ConventionListResponse>;
 
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
