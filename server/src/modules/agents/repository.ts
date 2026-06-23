@@ -262,6 +262,20 @@ export class AgentsRepository {
     });
   }
 
+  /**
+   * Return ordered body strings for all enabled linked skills for an agent.
+   * Empty bodies are excluded — they have no effect on the prompt.
+   */
+  async enabledSkillBodiesForAgent(agentId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ body: t.skills.body, order: t.agentSkills.order })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.enabled, true)))
+      .orderBy(asc(t.agentSkills.order));
+    return rows.map((r) => r.body).filter((b) => b.length > 0);
+  }
+
   /** Toggle a single link's enabled flag. Returns true if a row matched. */
   async setSkillEnabled(
     agentId: string,
