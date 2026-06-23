@@ -84,9 +84,13 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         container.invalidateSecretCaches();
       }
       if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
+        const gh = await container.forgeClient('github');
         const login = await gh.currentLogin();
         return { provider, ok: true, message: `Connected as @${login}` };
+      }
+      if (provider === 'bitbucket') {
+        // Bitbucket client not yet implemented (Task 4) — report not configured.
+        return { provider, ok: false, message: 'Bitbucket support is not yet available' };
       }
       const llm = await container.llm(provider);
       const models = await llm.listModels();

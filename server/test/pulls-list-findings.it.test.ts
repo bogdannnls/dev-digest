@@ -163,7 +163,7 @@ d('GET /repos/:id/pulls — findings counts', () => {
       config: cfg,
       db: pg.handle.db,
       overrides: {
-        github: new MockGitHubClient({ pulls: [] }),
+        forge: { github: new MockGitHubClient({ pulls: [] }) },
         git: new MockGitClient(),
       },
     });
@@ -189,7 +189,7 @@ d('GET /repos/:id/pulls — findings counts', () => {
       config: cfg,
       db: pg.handle.db,
       overrides: {
-        github: new MockGitHubClient({ pulls: [] }),
+        forge: { github: new MockGitHubClient({ pulls: [] }) },
         git: new MockGitClient(),
       },
     });
@@ -226,7 +226,7 @@ d('GET /repos/:id/pulls — findings counts', () => {
       config: cfg,
       db: pg.handle.db,
       overrides: {
-        github: new MockGitHubClient({ pulls: [] }),
+        forge: { github: new MockGitHubClient({ pulls: [] }) },
         git: new MockGitClient(),
       },
     });
@@ -269,7 +269,7 @@ d('GET /repos/:id/pulls — findings counts', () => {
       config: cfg,
       db: pg.handle.db,
       overrides: {
-        github: new MockGitHubClient({ pulls: [] }),
+        forge: { github: new MockGitHubClient({ pulls: [] }) },
         git: new MockGitClient(),
       },
     });

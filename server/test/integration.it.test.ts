@@ -91,7 +91,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git, github: new MockGitHubClient() },
+      overrides: { git, forge: { github: new MockGitHubClient() } },
     });
 
     const create = await app.inject({
@@ -117,7 +117,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: { github: new MockGitHubClient() } },
     });
     const repos = await app.inject({ method: 'GET', url: '/repos' });
     const repoId = repos.json()[0]!.id;
@@ -136,7 +136,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: { github: new MockGitHubClient() } },
     });
     const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
     const poll = await app.inject({ method: 'POST', url: `/repos/${repoId}/poll` });

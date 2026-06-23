@@ -100,7 +100,7 @@ export interface RepoRef {
   name: string;
 }
 
-export interface GitHubReviewPayload {
+export interface ForgeReviewPayload {
   body: string;
   event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
   comments?: { path: string; line: number; body: string }[];
@@ -140,10 +140,10 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
-export interface GitHubClient {
+export interface ForgeClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
-  postReview(repo: RepoRef, n: number, review: GitHubReviewPayload): Promise<{ id: string }>;
+  postReview(repo: RepoRef, n: number, review: ForgeReviewPayload): Promise<{ id: string }>;
   /** List inline review comments on a PR (for the "Files changed" tab). */
   listReviewComments(repo: RepoRef, n: number): Promise<PrReviewComment[]>;
   /** Create one inline review comment (or reply) on a PR; returns the new comment. */
@@ -275,6 +275,9 @@ export type SecretKey =
   | 'OPENAI_API_KEY'
   | 'ANTHROPIC_API_KEY'
   | 'GITHUB_TOKEN'
+  | 'BITBUCKET_TOKEN'
+  | 'BITBUCKET_USERNAME'
+  | 'BITBUCKET_APP_PASSWORD'
   | 'DATABASE_URL'
   | (string & {});
 

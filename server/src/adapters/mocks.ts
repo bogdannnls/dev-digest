@@ -7,11 +7,11 @@ import type {
   StructuredRequest,
   StructuredResult,
   Embedder,
-  GitHubClient,
+  ForgeClient,
   RepoRef,
   PrMeta,
   PrDetail,
-  GitHubReviewPayload,
+  ForgeReviewPayload,
   CreateReviewCommentInput,
   PrReviewComment,
   OpenPrPayload,
@@ -128,8 +128,8 @@ export interface MockGitHubOptions {
   comments?: PrReviewComment[];
 }
 
-export class MockGitHubClient implements GitHubClient {
-  public posted: { n: number; review: GitHubReviewPayload }[] = [];
+export class MockGitHubClient implements ForgeClient {
+  public posted: { n: number; review: ForgeReviewPayload }[] = [];
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
@@ -188,7 +188,7 @@ export class MockGitHubClient implements GitHubClient {
     return { ...base, ...this.opts.detail };
   }
 
-  async postReview(_repo: RepoRef, n: number, review: GitHubReviewPayload): Promise<{ id: string }> {
+  async postReview(_repo: RepoRef, n: number, review: ForgeReviewPayload): Promise<{ id: string }> {
     this.posted.push({ n, review });
     return { id: `mock-review-${n}` };
   }

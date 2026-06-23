@@ -52,5 +52,6 @@ export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {
     clone_path: row.clonePath,
     last_polled_at: row.lastPolledAt?.toISOString() ?? null,
     created_by: row.createdBy,
+    provider: 'github',
   };
 }

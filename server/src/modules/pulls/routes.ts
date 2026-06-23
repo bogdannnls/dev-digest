@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import type { PrMeta, PrDetail, ForgeClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput, emptyFindingsBuckets } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -113,9 +113,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    let gh: GitHubClient | null = null;
+    let gh: ForgeClient | null = null;
     try {
-      gh = await container.github();
+      gh = await container.forgeClient('github');
     } catch (err) {
       app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
     }
@@ -266,7 +266,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // otherwise serve the persisted files/commits/body (seeded or previously
     // imported) so PR detail works offline.
     try {
-      const gh = await container.github();
+      const gh = await container.forgeClient('github');
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -364,9 +364,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     async (req): Promise<PrReviewComment[]> => {
       const { workspaceId } = await getContext(container, req);
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
-      let gh: GitHubClient;
+      let gh: ForgeClient;
       try {
-        gh = await container.github();
+        gh = await container.forgeClient('github');
       } catch (err) {
         app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
         return [];
@@ -387,9 +387,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       const { workspaceId } = await getContext(container, req);
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
       const input = req.body;
-      let gh: GitHubClient;
+      let gh: ForgeClient;
       try {
-        gh = await container.github();
+        gh = await container.forgeClient('github');
       } catch {
         throw new AppError(
           'github_unavailable',

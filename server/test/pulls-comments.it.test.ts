@@ -76,7 +76,7 @@ d('inline PR comments routes (Testcontainers pg)', () => {
 
   it('GET reflects existing GitHub review comments', async () => {
     const gh = new MockGitHubClient({ comments: [EXISTING] });
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: { github: gh } } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/comments` });
@@ -88,7 +88,7 @@ d('inline PR comments routes (Testcontainers pg)', () => {
 
   it('POST creates a comment pinned to the PR head sha', async () => {
     const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: { github: gh } } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({
@@ -111,7 +111,7 @@ d('inline PR comments routes (Testcontainers pg)', () => {
 
   it('POST forwards a reply as in_reply_to', async () => {
     const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: { github: gh } } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({
@@ -125,7 +125,7 @@ d('inline PR comments routes (Testcontainers pg)', () => {
 
   it('POST rejects an empty body as a validation error', async () => {
     const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: { github: gh } } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({

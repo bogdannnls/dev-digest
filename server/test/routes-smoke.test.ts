@@ -22,7 +22,7 @@ describe('routes (no DB)', () => {
   it('POST /settings/test-connection (github) returns structured ConnTestResult', async () => {
     const app = await buildApp({
       config,
-      overrides: { github: new MockGitHubClient({ login: 'octocat' }) },
+      overrides: { forge: { github: new MockGitHubClient({ login: 'octocat' }) } },
     });
     const res = await app.inject({
       method: 'POST',
