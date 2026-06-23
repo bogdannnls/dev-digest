@@ -140,12 +140,16 @@ export const RepoInput = z.object({
 });
 export type RepoInput = z.infer<typeof RepoInput>;
 
+export const RepoProvider = z.enum(['github', 'bitbucket']);
+export type RepoProvider = z.infer<typeof RepoProvider>;
+
 export const Repo = z.object({
   id: z.string(),
   workspace_id: z.string(),
   owner: z.string(),
   name: z.string(),
   full_name: z.string(),
+  provider: RepoProvider,
   default_branch: z.string(),
   clone_path: z.string().nullable(),
   last_polled_at: z.string().nullable(),

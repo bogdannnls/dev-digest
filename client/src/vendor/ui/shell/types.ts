@@ -12,6 +12,7 @@ export type LinkLike = React.ComponentType<{
 export interface RepoSummary {
   id: string;
   full_name: string;
+  provider?: 'github' | 'bitbucket';
   default_branch?: string;
   syncedLabel?: string;
 }
