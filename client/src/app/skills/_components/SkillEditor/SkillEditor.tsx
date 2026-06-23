@@ -10,6 +10,7 @@ import { useCreateSkill, useSkill, useUpdateSkill } from "../../../../lib/hooks/
 import { useToast } from "../../../../lib/toast";
 import { TYPE_OPTIONS } from "../SkillsListView/constants";
 import { MarkdownSplit } from "./_components/MarkdownSplit";
+import { suggestSkillType } from "../../../../lib/skill-type-suggest";
 import { s } from "./styles";
 
 type Mode = { mode: "create" } | { mode: "edit"; skillId: string };
@@ -70,6 +71,12 @@ export function SkillEditor(props: Mode) {
 
   const canSubmit = name.trim().length > 0 && body.trim().length > 0;
 
+  const suggestion = React.useMemo(
+    () => suggestSkillType(`${name}\n${description}\n${body}`),
+    [name, description, body],
+  );
+  const showSuggestion = suggestion && suggestion.type !== type;
+
   const onSave = () => {
     if (isEdit) {
       update.mutate(
@@ -109,6 +116,42 @@ export function SkillEditor(props: Mode) {
             options={TYPE_OPTIONS.map((tp) => ({ value: tp, label: t(`types.${tp}`) }))}
             mono={false}
           />
+          {showSuggestion && suggestion && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                marginTop: 8,
+                padding: "6px 10px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 999,
+                background: "var(--bg-elevated)",
+                border: "1px dashed var(--border)",
+                fontSize: 12,
+                color: "var(--text-secondary)",
+              }}
+            >
+              ✦ {t("editor.typeSuggestion", { type: t(`types.${suggestion.type}`) })}
+              <button
+                type="button"
+                onClick={() => setType(suggestion.type)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  color: "var(--accent)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {t("editor.typeSuggestionApply")}
+              </button>
+            </div>
+          )}
         </FormField>
         <FormField label={t("editor.enabled")}>
           <Toggle on={enabled} onChange={setEnabled} size={16} />

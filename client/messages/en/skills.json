@@ -65,6 +65,8 @@
     "saving": "Saving…",
     "savedToast": "Skill saved (v{version})",
     "type": "Type",
+    "typeSuggestion": "Looks like {type} — based on what you wrote.",
+    "typeSuggestionApply": "Use this",
     "unsavedCancel": "Keep editing",
     "unsavedConfirm": "Discard",
     "unsavedBody": "You have unsaved edits. Leave the page anyway?",

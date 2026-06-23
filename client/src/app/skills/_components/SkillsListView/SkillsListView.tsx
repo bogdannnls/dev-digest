@@ -39,9 +39,11 @@ export function SkillsListView() {
             <h1 style={s.h1}>{t("list.title")}</h1>
             <p style={s.subtitle}>{t("list.subtitle")}</p>
           </div>
-          <div style={{ marginLeft: "auto" }}>
-            <AddSkillButton onCreate={() => router.push("/skills/new")} onImport={() => setImporting(true)} />
-          </div>
+          {!hasSkills && (
+            <div style={{ marginLeft: "auto" }}>
+              <AddSkillButton onCreate={() => router.push("/skills/new")} onImport={() => setImporting(true)} />
+            </div>
+          )}
         </div>
 
         {isLoading && (
