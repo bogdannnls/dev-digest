@@ -199,11 +199,6 @@ export class AgentsService {
     return this.skillLinks(agentId);
   }
 
-  /** Linked skill bodies (enabled only) in order — fed to reviewer-core's `skills` input. */
-  async loadEnabledSkillBodies(agentId: string): Promise<string[]> {
-    return this.repo.enabledSkillBodiesForAgent(agentId);
-  }
-
   /**
    * Unlink a single skill from an agent. Returns the updated link list (possibly
    * empty), or undefined if the agent is missing in this workspace.
@@ -240,7 +235,7 @@ export class AgentsService {
     const fx = loadFixture(fixtureId);
     if (!fx) throw new NotFoundError(`Fixture "${fixtureId}" not found`);
 
-    const skillBodies = await this.loadEnabledSkillBodies(agentId);
+    const skillBodies = await this.repo.enabledSkillBodiesForAgent(agentId);
     const llm = await this.container.llm(agent.provider as Provider);
 
     const runOnce = async (skills: string[] | undefined): Promise<SkillsEvalSide> => {

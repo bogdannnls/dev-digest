@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { seed } from '../src/db/seed.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
-import { AgentsService } from '../src/modules/agents/service.js';
 import * as t from '../src/db/schema.js';
 import type { Db } from '../src/db/client.js';
 
@@ -41,18 +40,6 @@ d('skills loader', () => {
     const bodies = await repo.enabledSkillBodiesForAgent(agentId);
 
     expect(bodies).toEqual(['A', 'C']);
-  });
-
-  it('service.loadEnabledSkillBodies returns the same as the repo', async () => {
-    const db = pg.handle.db;
-    // AgentsService constructor reads container.db; we provide a minimal partial container.
-    const container = { db } as import('../src/platform/container.js').Container;
-    const service = new AgentsService(container);
-    const agentId = await seedTestAgentWithSkills(db, workspaceId, [
-      { body: 'only-one', order: 0, enabled: true },
-    ]);
-
-    expect(await service.loadEnabledSkillBodies(agentId)).toEqual(['only-one']);
   });
 });
 
