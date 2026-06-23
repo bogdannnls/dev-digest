@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillType } from '@devdigest/shared';
+import { SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
@@ -23,6 +23,7 @@ const CreateSkillBody = z.object({
   type: SkillType,
   body: z.string().min(1),
   enabled: z.boolean().optional(),
+  source: SkillSource.optional(),
 });
 
 const UpdateSkillBody = z.object({
