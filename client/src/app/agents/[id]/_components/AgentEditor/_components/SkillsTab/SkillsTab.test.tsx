@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import agentsMessages from "../../../../../../../../messages/en/agents.json";
 import { SkillsTab } from "./SkillsTab";
 import type { Agent, AgentSkillLink, Skill } from "@devdigest/shared";
+import type { DragEndEvent } from "@dnd-kit/core";
 
 const agent: Agent = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -48,12 +49,28 @@ function wrap(ui: React.ReactNode, qc: QueryClient) {
 const apiSpy = vi.hoisted(() => ({ post: vi.fn(), patch: vi.fn(), del: vi.fn(), get: vi.fn(), put: vi.fn() }));
 vi.mock("../../../../../../../lib/api", () => ({ api: apiSpy, ApiError: class extends Error {} }));
 
+// Capture the onDragEnd handler from DndContext so we can fire it directly.
+// jsdom does not provide a real pointer/keyboard event loop, so driving
+// @dnd-kit's KeyboardSensor via userEvent.keyboard is unreliable in unit tests.
+let capturedOnDragEnd: ((e: DragEndEvent) => void) | undefined;
+vi.mock("@dnd-kit/core", async (importActual) => {
+  const actual = await importActual<typeof import("@dnd-kit/core")>();
+  return {
+    ...actual,
+    DndContext: (props: { onDragEnd?: (e: DragEndEvent) => void; children?: React.ReactNode }) => {
+      capturedOnDragEnd = props.onDragEnd;
+      return <>{props.children}</>;
+    },
+  };
+});
+
 beforeEach(() => {
   apiSpy.post.mockReset().mockResolvedValue([]);
   apiSpy.patch.mockReset().mockResolvedValue([]);
   apiSpy.del.mockReset().mockResolvedValue([]);
   apiSpy.get.mockReset();
   apiSpy.put.mockReset();
+  capturedOnDragEnd = undefined;
 });
 
 describe("SkillsTab", () => {
@@ -129,5 +146,40 @@ describe("SkillsTab", () => {
     await userEvent.type(screen.getByPlaceholderText(/filter skills/i), "skill-b");
     expect(screen.queryByText("skill-a")).not.toBeInTheDocument();
     expect(screen.getByText("skill-b")).toBeInTheDocument();
+  });
+
+  it("drag-reorder fires POST { skill_ids } in the new order", async () => {
+    // NOTE: jsdom does not support @dnd-kit's KeyboardSensor pointer/keyboard event
+    // loop, so we drive handleDragEnd directly via the DndContext mock above.
+    const qc = buildClient([
+      { agent_id: agent.id, skill_id: "s-a", order: 0, enabled: true },
+      { agent_id: agent.id, skill_id: "s-b", order: 1, enabled: true },
+    ]);
+    apiSpy.post.mockResolvedValueOnce([
+      { agent_id: agent.id, skill_id: "s-b", order: 0, enabled: true },
+      { agent_id: agent.id, skill_id: "s-a", order: 1, enabled: true },
+    ]);
+    render(wrap(<SkillsTab agent={agent} />, qc));
+
+    // DndContext mock captures onDragEnd during render.
+    expect(capturedOnDragEnd).toBeDefined();
+
+    // Simulate dragging s-a (index 0) onto s-b (index 1) — net move: s-a moves down.
+    await act(async () => {
+      capturedOnDragEnd!({
+        active: { id: "s-a", data: { current: undefined }, rect: { current: { initial: null, translated: null } } },
+        over: { id: "s-b", data: { current: undefined }, rect: { width: 0, height: 0, left: 0, top: 0, right: 0, bottom: 0 } },
+        collisions: [],
+        activatorEvent: new Event("pointerdown"),
+        delta: { x: 0, y: 0 },
+      } as unknown as DragEndEvent);
+    });
+
+    await waitFor(() => {
+      expect(apiSpy.post).toHaveBeenCalledWith(
+        `/agents/${agent.id}/skills`,
+        { skill_ids: ["s-b", "s-a"] },
+      );
+    });
   });
 });
