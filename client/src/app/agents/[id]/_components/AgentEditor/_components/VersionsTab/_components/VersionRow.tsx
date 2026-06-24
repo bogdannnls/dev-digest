@@ -41,7 +41,7 @@ export function VersionRow({
       >
         <span style={s.versionLabel}>v{v.version}</span>
         <span style={s.timestamp}>{FMT.format(new Date(v.created_at))}</span>
-        {isCurrent && <Badge color="var(--accent)">{t("current")}</Badge>}
+        {isCurrent && <Badge color="var(--accent-text)" bg="var(--accent-bg)">{t("current")}</Badge>}
         <span style={s.chevron}>{open ? <Icon.ChevronDown size={16} /> : <Icon.ChevronRight size={16} />}</span>
       </button>
       {open && (
