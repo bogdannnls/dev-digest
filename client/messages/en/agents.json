@@ -130,5 +130,29 @@
     "retry": "Retry",
     "close": "Close",
     "cancel": "Cancel"
+  },
+  "versions": {
+    "title": "Version history",
+    "count": "{count, plural, one {# version} other {# versions}}",
+    "current": "current",
+    "onlyOne": "Only one version so far — this agent has not been edited yet.",
+    "loadError": "Could not load version history.",
+    "retry": "Retry",
+    "fields": {
+      "provider": "Provider",
+      "model": "Model",
+      "strategy": "Strategy",
+      "ciFailOn": "CI gate",
+      "repoIntel": "Repo intel",
+      "skills": "Skills",
+      "systemPrompt": "System prompt",
+      "outputSchema": "Output schema"
+    },
+    "outputSchemaDefault": "default",
+    "outputSchemaCustom": "custom",
+    "noSkills": "(none)",
+    "skillDeletedSuffix": "(deleted)",
+    "repoIntelOn": "on",
+    "repoIntelOff": "off"
   }
 }
