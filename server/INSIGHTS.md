@@ -111,3 +111,15 @@ What we tried: `jq '.id, .prevId' meta/00{10..13}_snapshot.json`. Result: `0010.
 What worked for unblocking this PR: hand-write `0014_evidence_lines.sql` and append a single entry to `meta/_journal.json`. Skip writing `meta/0014_snapshot.json` — the runtime applier (`migrate()` in `db:migrate`) reads only the journal + SQL files; per-migration snapshots are consumed only by future `db:generate`. The collision remains for the next person who runs `db:generate`.
 
 Why it matters: the bug is silent until you try to add a column. The error message names three files but not the actual fault (two snapshots forked off `0010` with identical ids). The repo-INSIGHTS already documents that the journal is load-bearing — this is the adjacent failure: per-migration snapshots are also load-bearing for `db:generate`, and a broken chain in main poisons every future migration until repaired. Open follow-up: regenerate `0012`/`0013` snapshots so the chain runs `0010 → 0011 → 0012 → 0013 → 0014`.
+
+## 2026-06-24 — Bitbucket App Passwords deprecated; removal July 28, 2026
+
+Context: user testing Bitbucket connection in DevDigest (June 2026). Bitbucket's App Passwords page shows: "App passwords will be permanently removed on July 28, 2026. Migrate to API tokens with scopes immediately."
+
+Why it matters: `BitbucketClient`'s Basic auth path (`Authorization: Basic base64(username:appPassword)`) stops working July 28, 2026 — roughly 4 weeks from this writing. The replacement is Bitbucket-scoped API tokens created at `bitbucket.org/account/settings/api-tokens/` (NOT Atlassian account tokens from `id.atlassian.com`). Migration needed before cutoff: update `BitbucketClient` constructor, `withForgeToken`, container wiring, and UI labels to support the new token format. The new tokens likely use Basic auth with `username:token` (same wire format, different credential type) — confirm against Bitbucket docs when implementing.
+
+## 2026-06-24 — Atlassian account API tokens (`id.atlassian.com`) do not work with Bitbucket REST API v2
+
+Context: user tried a token from `id.atlassian.com/manage-profile/security/api-tokens` as OAuth Bearer, then as Basic auth with `email:token`. Both returned Bitbucket's error `"Token is invalid, expired, or not supported for this endpoint"` (401).
+
+Why it matters: Atlassian account tokens are for Jira/Confluence, not Bitbucket Cloud REST API v2. Users who google "Bitbucket API token" often land on the Atlassian account token page first and hit an opaque 401 with no clear signal that they need a different credential system. The correct credentials for Bitbucket REST API v2 are App Passwords (or their replacement, Bitbucket-scoped API tokens from `bitbucket.org/account/settings/api-tokens/`). The UI hint text in the Bitbucket settings panel should be updated to name this distinction explicitly.
