@@ -124,6 +124,16 @@ Context: user tried a token from `id.atlassian.com/manage-profile/security/api-t
 
 Why it matters: Atlassian account tokens are for Jira/Confluence, not Bitbucket Cloud REST API v2. Users who google "Bitbucket API token" often land on the Atlassian account token page first and hit an opaque 401 with no clear signal that they need a different credential system. The correct credentials for Bitbucket REST API v2 are App Passwords (or their replacement, Bitbucket-scoped API tokens from `bitbucket.org/account/settings/api-tokens/`). The UI hint text in the Bitbucket settings panel should be updated to name this distinction explicitly.
 
+## 2026-06-24 — Drizzle silently skips migrations whose journal `when` is earlier than the last-applied one
+
+Context: `column "evidence_start_line" does not exist` at runtime even though `0014_evidence_lines.sql` was committed and `pnpm db:migrate` reported success. The DB had only 13 of 15 migrations applied; `0013_add_provider_check` and `0014_evidence_lines` were never applied on any environment.
+
+Root cause: both were hand-authored with `when` = `1750636800000`/`1750723200000` (2025-06-23/24) — a year *behind* the already-applied `0012_first_bastion` (`1782240599391`, 2026-06-23). Drizzle's pg applier (`node_modules/drizzle-orm/pg-core/dialect.js:62`) applies a migration only when `Number(lastDbMigration.created_at) < migration.folderMillis`, comparing each journal `when` against the single newest applied timestamp — **not** idx order. Any migration with `when` ≤ the last-applied timestamp is skipped forever, and `db:migrate` prints "migrations applied" with no warning.
+
+Fix: reset the two `when` values in `meta/_journal.json` to the real commit times (`1782243222000`, `1782251856000`), then re-run `pnpm db:migrate`.
+
+Why it matters: runtime-applier twin of the snapshot-chain collision noted above; hand-appending journal entries (instead of `pnpm db:generate`) is the shared root cause. The failure is silent — the error names a missing column, never the journal. Invariant for any hand-authored migration: its journal `when` must be strictly greater than every prior entry's (use a current epoch-ms, never a typed-out date), or it will never apply on a DB that already ran the previous migration.
+
 ## 2026-06-24 — `test-connection` tested STORED secrets, not request-body creds (stale token shadowed fresh App Password)
 
 Context: user typed a Bitbucket App Password and clicked Test. The endpoint persisted the new credentials, then called `container.forgeClient('bitbucket')`, which reads `BITBUCKET_TOKEN` first (token wins over username+appPassword in the container's resolution order, by design). A bad OAuth token persisted from an earlier failed test was still in `BITBUCKET_TOKEN`, so the test silently ignored the freshly-typed App Password and re-tested the bad token. Symptom: identical error message regardless of what the user typed.
