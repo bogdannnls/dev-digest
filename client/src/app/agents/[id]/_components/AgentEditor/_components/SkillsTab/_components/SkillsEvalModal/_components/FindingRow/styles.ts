@@ -31,6 +31,7 @@ export const s = {
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: "0.5px",
+    textIndent: "0.5px",
     padding: "2px 6px",
     borderRadius: 4,
     border: "1px solid currentColor",
