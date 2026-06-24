@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "versions": "Versions",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
