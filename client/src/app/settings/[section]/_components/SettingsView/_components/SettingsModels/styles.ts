@@ -33,6 +33,6 @@ export const s = {
   unsavedHint: {
     marginTop: 6,
     fontSize: 12,
-    color: "var(--text-warning, var(--text-muted))",
+    color: "var(--text-danger)",
   } satisfies CSSProperties,
 } as const;
