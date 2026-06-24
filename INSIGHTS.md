@@ -129,3 +129,13 @@ What we tried: adding the new values to the enum and running typecheck.
 What worked: also updating the `LEVEL` map in `run-logger.ts` — an exhaustive `Record<RunEventKind, keyof PinoLike>` that TypeScript enforces at compile time.
 
 Why it matters: the coupling between `trace.ts` and `run-logger.ts` is invisible unless you happen to run typecheck. Any future enum extension will break the same way. When adding to `RunEventKind`, always check `server/src/platform/run-logger.ts` for the `LEVEL` map and add entries for each new variant. `server/src/platform/run-logger.ts` + `server/src/vendor/shared/contracts/trace.ts`.
+
+## 2026-06-24 — `/pr-self-review` only inspects uncommitted changes; silently skips when run after committing
+
+Context: at the end of a subagent-driven implementation plan (`superpowers:subagent-driven-development`), every task lands as its own commit per SDD discipline. `CLAUDE.md` says "before marking work ready... run `/pr-self-review`" — but by then the working tree is clean and the workflow returns `{skipped: true, must: [], should: []}`.
+
+What we tried: running `/pr-self-review` as the pre-ready gate after 4 task commits during the Agent Editor Versions tab work.
+
+What worked: dispatching a fresh code-reviewer subagent over the committed range `BASE..HEAD` (here `f7cd0aa..f4ead73`) using `superpowers:requesting-code-review/code-reviewer.md` and the SDD `scripts/review-package` to pre-render the diff into a file. The reviewer caught a real `Badge` styling issue the focused per-task reviews had missed.
+
+Why it matters: the project's pre-ready gate silently no-ops on committed work. A future contributor following `CLAUDE.md` literally will see "skipped" and think the gate passed when nothing was actually checked. Two workable patterns: (a) stage the final task's files but don't commit, run `/pr-self-review`, then commit — preserves the existing skill; (b) treat `/pr-self-review` as a mid-task gate against working-tree changes and use the SDD whole-branch reviewer at the end of multi-commit plans. Open follow-up: either extend the `pr-self-review` workflow to accept a `BASE..HEAD` range, or clarify in `CLAUDE.md` which gate applies at which point.
