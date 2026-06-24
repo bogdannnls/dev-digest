@@ -367,9 +367,24 @@ export class BitbucketClient implements ForgeClient {
     };
   }
 
+  /**
+   * `GET /user` is the canonical identity endpoint but the new Atlassian API
+   * tokens with scopes don't support it (no `read:me` scope exists). Fall back
+   * to `/user/permissions/workspaces`, which works with `read:account` and
+   * also confirms the token can actually reach Bitbucket — the goal of this
+   * call from the connection test.
+   */
   async currentLogin(): Promise<string> {
-    const user = await this.call<{ nickname?: string; display_name?: string }>('/user');
-    return user.nickname ?? user.display_name ?? 'unknown';
+    try {
+      const user = await this.call<{ nickname?: string; display_name?: string }>('/user');
+      return user.nickname ?? user.display_name ?? 'unknown';
+    } catch {
+      const perms = await this.call<{ values?: { workspace?: { slug?: string; name?: string } }[] }>(
+        '/user/permissions/workspaces?pagelen=1',
+      );
+      const ws = perms.values?.[0]?.workspace;
+      return ws?.slug ?? ws?.name ?? 'authenticated';
+    }
   }
 }
 
