@@ -85,6 +85,12 @@ export class ConventionsService {
       );
     }
 
+    // Emit 'done' AFTER insertMany commits so the UI's invalidate-on-done
+    // refetch sees the freshly-inserted rows, not the deleteByRepo-wiped table.
+    emit('done', `Found ${candidates.length} verified conventions`, {
+      count: candidates.length,
+    });
+
     this.container.runBus.complete(scanId);
   }
 

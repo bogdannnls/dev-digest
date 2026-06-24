@@ -61,7 +61,11 @@ describe('extractConventions', () => {
     // Snippet is line 1 of SAMPLE_CONTENT, single-line.
     expect(first.evidenceStartLine).toBe(1);
     expect(first.evidenceEndLine).toBe(1);
-    expect(mockEmit).toHaveBeenCalledWith('done', expect.any(String), { count: 1 });
+    // 'done' is no longer emitted from the extractor — the service emits it
+    // after insertMany commits, so the UI's invalidate-on-done refetch sees
+    // the fresh rows. Extractor's job ends at returning verified candidates.
+    const emittedKinds = mockEmit.mock.calls.map((c) => c[0]);
+    expect(emittedKinds).not.toContain('done');
   });
 
   it('computes 1-based start/end lines for a multi-line snippet', async () => {
@@ -128,7 +132,10 @@ describe('extractConventions', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('emits sampling, analyzing, verifying, done events', async () => {
+  it('emits sampling and analyzing progress events but NOT done', async () => {
+    // 'done' is the service's signal that "data is committed to the DB" —
+    // emitting it from here would race the UI's invalidate-on-done refetch
+    // against the not-yet-completed insertMany. See service.runExtraction.
     const container = makeContainer([]);
     await extractConventions(
       container as unknown as Container,
@@ -140,6 +147,6 @@ describe('extractConventions', () => {
     const kinds = mockEmit.mock.calls.map((c) => c[0]);
     expect(kinds).toContain('sampling');
     expect(kinds).toContain('analyzing');
-    expect(kinds).toContain('done');
+    expect(kinds).not.toContain('done');
   });
 });

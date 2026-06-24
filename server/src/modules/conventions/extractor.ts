@@ -71,7 +71,7 @@ export async function extractConventions(
   }
 
   if (sampled.size === 0) {
-    emit('done', 'No readable files found', { count: 0 });
+    // 'done' is emitted by the service after this returns; just bail with [].
     return [];
   }
 
@@ -136,7 +136,8 @@ export async function extractConventions(
     });
   }
 
-  emit('done', `Found ${verified.length} verified conventions`, { count: verified.length });
+  // 'done' is emitted by the service AFTER insertMany commits, so the UI's
+  // invalidate-on-done refetch never races against in-flight inserts.
   return verified;
 }
 
