@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, AgentSkillLink, ModelInfo, PRFixtureMeta, Provider, ReviewStrategy, SkillsEvalResult } from "@devdigest/shared";
+import type { Agent, AgentSkillLink, AgentVersion, ModelInfo, PRFixtureMeta, Provider, ReviewStrategy, SkillsEvalResult } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -17,6 +17,14 @@ export function useAgent(id: string | null | undefined) {
     queryKey: ["agent", id],
     queryFn: () => api.get<Agent>(`/agents/${id}`),
     enabled: !!id,
+  });
+}
+
+export function useAgentVersions(agentId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-versions", agentId],
+    queryFn: () => api.get<AgentVersion[]>(`/agents/${agentId}/versions`),
+    enabled: !!agentId,
   });
 }
 
@@ -65,6 +73,7 @@ export function useUpdateAgent() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agents"] });
       qc.setQueryData(["agent", data.id], data);
+      qc.invalidateQueries({ queryKey: ["agent-versions", data.id] });
     },
   });
 }
