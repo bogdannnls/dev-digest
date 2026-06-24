@@ -12,7 +12,6 @@ export const PrOverviewBriefVerdict = z.enum([
   'approve',
   'request_changes',
   'comment',
-  'no_runs',
 ]);
 export type PrOverviewBriefVerdict = z.infer<typeof PrOverviewBriefVerdict>;
 

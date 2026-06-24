@@ -1,25 +1,20 @@
 "use client";
 
 import React from "react";
-import { Skeleton, ErrorState, SectionLabel } from "@devdigest/ui";
-import type { Verdict } from "@devdigest/shared";
+import { Skeleton, ErrorState, SectionLabel, CircularScore } from "@devdigest/ui";
 import { useOverviewBrief } from "@/lib/hooks/overview";
+import { VERDICT_META } from "../../../VerdictBanner/constants";
 
 interface PrBriefCardProps {
   prId: string | null;
 }
 
-const VERDICT_LABEL: Record<Verdict, string> = {
+/** Human-readable verdict labels. Intentionally not i18n — PrBriefCard is a compact card
+ *  outside the prReview intl namespace. labelKey values are taken from VERDICT_META. */
+const VERDICT_LABEL: Record<keyof typeof VERDICT_META, string> = {
   approve: "Approve",
   comment: "Comment",
   request_changes: "Request changes",
-};
-
-/** Uses the same CSS-variable palette as VerdictBanner (var(--ok), var(--crit), var(--info)). */
-const VERDICT_COLOR: Record<Verdict, { c: string; bg: string }> = {
-  approve: { c: "var(--ok)", bg: "var(--ok-bg)" },
-  comment: { c: "var(--info)", bg: "var(--info-bg)" },
-  request_changes: { c: "var(--crit)", bg: "var(--crit-bg)" },
 };
 
 function formatUsd(n: number): string {
@@ -63,11 +58,7 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
     );
   }
 
-  // `PrOverviewBriefVerdict` includes `no_runs` for legacy reasons, but the server
-  // never sets verdict = 'no_runs' inside a `ready` response — it uses status = 'no_runs'
-  // for that case. The cast is safe; the Record<Verdict, …> maps enforce exhaustiveness.
-  const { verdict: rawVerdict, summary, findingsCount, blockersCount, score, totalCost } = data.data;
-  const verdict = rawVerdict as Verdict;
+  const { verdict, summary, findingsCount, blockersCount, score, totalCost } = data.data;
 
   return (
     <section>
@@ -87,8 +78,8 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            color: VERDICT_COLOR[verdict].c,
-            background: VERDICT_COLOR[verdict].bg,
+            color: VERDICT_META[verdict].c,
+            background: VERDICT_META[verdict].bg,
             fontSize: 12,
             fontWeight: 600,
           }}
@@ -103,11 +94,12 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
             {formatUsd(totalCost.usd)}
           </div>
         </div>
-        <div
-          style={{ fontSize: 28, fontWeight: 700, color: score == null ? "#9ca3af" : undefined }}
-          aria-label="PR score"
-        >
-          {score == null ? "—" : score}
+        <div aria-label="PR score">
+          {score == null ? (
+            <span style={{ fontSize: 28, fontWeight: 700, color: "#9ca3af" }}>—</span>
+          ) : (
+            <CircularScore score={score} size={52} stroke={5} />
+          )}
         </div>
       </div>
     </section>
