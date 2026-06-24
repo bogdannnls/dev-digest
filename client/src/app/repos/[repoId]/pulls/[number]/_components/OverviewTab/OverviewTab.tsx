@@ -2,15 +2,18 @@
 
 import React from "react";
 import { SectionLabel } from "@devdigest/ui";
+import { PrBriefCard } from "./_components/PrBriefCard";
 import { s } from "./styles";
 
 interface OverviewTabProps {
+  prId: string | null;
   prBody: string | null | undefined;
 }
 
-export function OverviewTab({ prBody }: OverviewTabProps) {
+export function OverviewTab({ prId, prBody }: OverviewTabProps) {
   return (
     <>
+      <PrBriefCard prId={prId} />
       {prBody && (
         <section>
           <SectionLabel icon="MessageSquare">Description</SectionLabel>
