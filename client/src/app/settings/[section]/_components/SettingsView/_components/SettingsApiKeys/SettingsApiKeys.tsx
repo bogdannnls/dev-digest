@@ -90,20 +90,30 @@ function BitbucketKeySection({
   const [revealOauth, setRevealOauth] = React.useState(false);
   const [revealPass, setRevealPass] = React.useState(false);
   const test = useTestConnection();
-  const [res, setRes] = React.useState<{ ok: boolean; message: string } | null>(null);
+  const [oauthRes, setOauthRes] = React.useState<{ ok: boolean; message: string } | null>(null);
+  const [appRes, setAppRes] = React.useState<{ ok: boolean; message: string } | null>(null);
 
-  const run = async () => {
-    setRes(null);
+  const runOauth = async () => {
+    setOauthRes(null);
+    try {
+      const r = await test.mutateAsync({ provider: "bitbucket", key: oauthToken.trim() || undefined });
+      setOauthRes({ ok: r.ok, message: r.message });
+    } catch (e) {
+      setOauthRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });
+    }
+  };
+
+  const runAppPassword = async () => {
+    setAppRes(null);
     try {
       const r = await test.mutateAsync({
         provider: "bitbucket",
-        key: oauthToken.trim() || undefined,
         username: username.trim() || undefined,
         appPassword: appPassword.trim() || undefined,
       });
-      setRes({ ok: r.ok, message: r.message });
+      setAppRes({ ok: r.ok, message: r.message });
     } catch (e) {
-      setRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });
+      setAppRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });
     }
   };
 
@@ -127,8 +137,17 @@ function BitbucketKeySection({
               }
             />
           </div>
+          <Button kind="secondary" size="md" onClick={runOauth} disabled={test.isPending}>
+            {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
+          </Button>
         </div>
       </FormField>
+      {oauthRes && (
+        <div style={s.result(oauthRes.ok)}>
+          {oauthRes.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
+          {oauthRes.message}
+        </div>
+      )}
       <FormField label={t("apiKeys.bitbucketUsernameLabel")} hint={t("apiKeys.bitbucketUsernameHint")}>
         <TextInput
           value={username}
@@ -151,17 +170,15 @@ function BitbucketKeySection({
               }
             />
           </div>
+          <Button kind="secondary" size="md" onClick={runAppPassword} disabled={test.isPending}>
+            {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
+          </Button>
         </div>
       </FormField>
-      <div style={s.keyRow}>
-        <Button kind="secondary" size="md" onClick={run} disabled={test.isPending}>
-          {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
-        </Button>
-      </div>
-      {res && (
-        <div style={s.result(res.ok)}>
-          {res.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
-          {res.message}
+      {appRes && (
+        <div style={s.result(appRes.ok)}>
+          {appRes.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
+          {appRes.message}
         </div>
       )}
     </div>
