@@ -151,11 +151,13 @@ function BitbucketKeySection({
               }
             />
           </div>
-          <Button kind="secondary" size="md" onClick={run} disabled={test.isPending}>
-            {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
-          </Button>
         </div>
       </FormField>
+      <div style={s.keyRow}>
+        <Button kind="secondary" size="md" onClick={run} disabled={test.isPending}>
+          {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
+        </Button>
+      </div>
       {res && (
         <div style={s.result(res.ok)}>
           {res.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
