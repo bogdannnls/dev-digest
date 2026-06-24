@@ -141,3 +141,28 @@ Context: user typed a Bitbucket App Password and clicked Test. The endpoint pers
 What worked: when the request body carries credentials (`key`, `username`, or `appPassword`), construct a one-off `BitbucketClient` directly from those creds. Only fall through to the container when the body is empty (preserves test-fixture injection via `ContainerOverrides.forge.bitbucket`).
 
 Why it matters: a "Test connection" button's intuitive contract is "test what I just typed." Routing through the container tests "what is stored after I typed" — which collides with credential-precedence rules whenever a provider supports multiple auth methods. Any future provider with multiple credential types (e.g., GitLab personal token + OAuth, Azure DevOps PAT + service principal) needs the same pattern. `server/src/modules/settings/routes.ts`.
+
+## 2026-06-24 — Conventions extractor's verbatim gate rejects LLM-elided snippets
+
+Context: debugging an empty-state from the Conventions UI scan. Added temporary diagnostic logging to `server/src/modules/conventions/extractor.ts` to surface raw LLM output and per-candidate rejection reasons.
+
+What we tried: hypothesized 100% candidate rejection was due to path-format mismatch between `getConventionSamples()` paths and the LLM's `evidence_path`.
+
+What worked: a clean diagnostic scan showed path format was fine (0 path rejections out of 21 candidates). 3/21 candidates died — all from the snippet check at `extractor.ts:119-122`, because the LLM emitted snippets containing `"\n...\n"` ellipses to abbreviate code, despite the system prompt's explicit "never paraphrase or modify" instruction.
+
+Why it matters: the verbatim gate is not a transparent passthrough. Even with an explicit prompt rule, a real fraction of LLM output uses ellipsis to abbreviate, and those candidates die silently. If candidate counts look unexpectedly low, suspect LLM ellipsis before assuming model/provider fault. The original empty-state bug couldn't be reproduced after a restart, so the gate alone was not the root cause — but the ellipsis reject channel is permanent and worth remembering. (n=1: 3/21 ≈ 14%, but the qualitative finding is the substance.)
+
+## 2026-06-24 — SSE 'done' must be emitted by the layer that commits the side effect, not the layer that produces the data
+
+Context: users reported intermittent empty state after clicking "Re-scan" in the Conventions UI. Server logs showed three successful scans (18/16/19 verified candidates) and the DB had the inserted rows — yet the UI flashed the "No conventions yet" empty state on repeat clicks.
+
+What we tried: ran the scan, watched DB + API + log. Everything green server-side; `curl GET /conventions` returned 19 rows. Suspected workspace scoping, React Query staleness, browser cache — all dead ends.
+
+What worked: tracing the 'done' SSE event ordering across three files:
+  - `extractor.ts` emitted `'done'` and then returned `verified`.
+  - `service.runExtraction` ran `deleteByRepo` BEFORE the extractor, then `insertMany` AFTER the extractor returned — i.e. AFTER 'done' had already left for the browser.
+  - The UI hook `useExtractConventions` listened for `'done'` and called `qc.invalidateQueries` immediately, which fired `GET /conventions`.
+
+That GET raced `insertMany`. When the GET won, it hit the table during the brief window after delete-but-before-insert and returned `[]`. The UI updated cache to empty → cards disappeared. Fix: move the `'done'` emit from extractor into `service.runExtraction` immediately after `insertMany`, right before `runBus.complete(scanId)`.
+
+Why it matters: this is a class of bug, not a one-off. Any SSE background job that (a) wipes then writes, (b) emits a "finished" event from a deep layer, and (c) has a UI that refetches on that event will race the same way. When introducing a new SSE-driven job, emit the user-visible "done" event from the layer that owns the DB transaction — not the layer that produces the data. `server/src/modules/reviews/` uses the same RunBus pattern and is worth a future audit for the same shape.
