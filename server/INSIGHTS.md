@@ -123,3 +123,11 @@ Why it matters: `BitbucketClient`'s Basic auth path (`Authorization: Basic base6
 Context: user tried a token from `id.atlassian.com/manage-profile/security/api-tokens` as OAuth Bearer, then as Basic auth with `email:token`. Both returned Bitbucket's error `"Token is invalid, expired, or not supported for this endpoint"` (401).
 
 Why it matters: Atlassian account tokens are for Jira/Confluence, not Bitbucket Cloud REST API v2. Users who google "Bitbucket API token" often land on the Atlassian account token page first and hit an opaque 401 with no clear signal that they need a different credential system. The correct credentials for Bitbucket REST API v2 are App Passwords (or their replacement, Bitbucket-scoped API tokens from `bitbucket.org/account/settings/api-tokens/`). The UI hint text in the Bitbucket settings panel should be updated to name this distinction explicitly.
+
+## 2026-06-24 — `test-connection` tested STORED secrets, not request-body creds (stale token shadowed fresh App Password)
+
+Context: user typed a Bitbucket App Password and clicked Test. The endpoint persisted the new credentials, then called `container.forgeClient('bitbucket')`, which reads `BITBUCKET_TOKEN` first (token wins over username+appPassword in the container's resolution order, by design). A bad OAuth token persisted from an earlier failed test was still in `BITBUCKET_TOKEN`, so the test silently ignored the freshly-typed App Password and re-tested the bad token. Symptom: identical error message regardless of what the user typed.
+
+What worked: when the request body carries credentials (`key`, `username`, or `appPassword`), construct a one-off `BitbucketClient` directly from those creds. Only fall through to the container when the body is empty (preserves test-fixture injection via `ContainerOverrides.forge.bitbucket`).
+
+Why it matters: a "Test connection" button's intuitive contract is "test what I just typed." Routing through the container tests "what is stored after I typed" — which collides with credential-precedence rules whenever a provider supports multiple auth methods. Any future provider with multiple credential types (e.g., GitLab personal token + OAuth, Azure DevOps PAT + service principal) needs the same pattern. `server/src/modules/settings/routes.ts`.
