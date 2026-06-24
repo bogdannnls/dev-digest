@@ -2,24 +2,24 @@
 
 import React from "react";
 import { Skeleton, ErrorState, SectionLabel } from "@devdigest/ui";
+import type { Verdict } from "@devdigest/shared";
 import { useOverviewBrief } from "@/lib/hooks/overview";
 
 interface PrBriefCardProps {
   prId: string | null;
 }
 
-const VERDICT_LABEL: Record<string, string> = {
+const VERDICT_LABEL: Record<Verdict, string> = {
   approve: "Approve",
   comment: "Comment",
   request_changes: "Request changes",
-  no_runs: "No reviews yet",
 };
 
-const VERDICT_COLOR: Record<string, string> = {
-  approve: "#16a34a",
-  comment: "#2563eb",
-  request_changes: "#dc2626",
-  no_runs: "#6b7280",
+/** Uses the same CSS-variable palette as VerdictBanner (var(--ok), var(--crit), var(--info)). */
+const VERDICT_COLOR: Record<Verdict, { c: string; bg: string }> = {
+  approve: { c: "var(--ok)", bg: "var(--ok-bg)" },
+  comment: { c: "var(--info)", bg: "var(--info-bg)" },
+  request_changes: { c: "var(--crit)", bg: "var(--crit-bg)" },
 };
 
 function formatUsd(n: number): string {
@@ -63,7 +63,11 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
     );
   }
 
-  const { verdict, summary, findingsCount, blockersCount, score, totalCost } = data.data;
+  // `PrOverviewBriefVerdict` includes `no_runs` for legacy reasons, but the server
+  // never sets verdict = 'no_runs' inside a `ready` response — it uses status = 'no_runs'
+  // for that case. The cast is safe; the Record<Verdict, …> maps enforce exhaustiveness.
+  const { verdict: rawVerdict, summary, findingsCount, blockersCount, score, totalCost } = data.data;
+  const verdict = rawVerdict as Verdict;
 
   return (
     <section>
@@ -83,13 +87,13 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            color: "white",
-            background: VERDICT_COLOR[verdict] ?? VERDICT_COLOR.no_runs,
+            color: VERDICT_COLOR[verdict].c,
+            background: VERDICT_COLOR[verdict].bg,
             fontSize: 12,
             fontWeight: 600,
           }}
         >
-          {VERDICT_LABEL[verdict] ?? verdict}
+          {VERDICT_LABEL[verdict]}
         </span>
         <div>
           <div style={{ fontSize: 14, marginBottom: 6 }}>{summary}</div>
