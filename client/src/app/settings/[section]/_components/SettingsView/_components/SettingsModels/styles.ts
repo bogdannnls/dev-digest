@@ -30,4 +30,9 @@ export const s = {
   } satisfies CSSProperties,
   providerSelect: { flexShrink: 0, width: 148 } satisfies CSSProperties,
   modelSelect: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  unsavedHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "var(--text-warning, var(--text-muted))",
+  } satisfies CSSProperties,
 } as const;

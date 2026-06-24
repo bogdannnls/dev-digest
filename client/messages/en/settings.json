@@ -33,7 +33,8 @@
     "usingDefault": "default",
     "search": "Search models…",
     "liveNote": "Model list and prices are pulled live from the selected provider — USD per 1M input/output tokens.",
-    "noKeyNote": "Add an API key for the selected provider under API Keys to load the model list."
+    "noKeyNote": "Add an API key for the selected provider under API Keys to load the model list.",
+    "pickModelHint": "Pick a model to save this change."
   },
   "workspace": {
     "title": "Workspace",

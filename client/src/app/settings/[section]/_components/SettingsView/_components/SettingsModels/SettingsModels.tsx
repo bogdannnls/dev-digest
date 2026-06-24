@@ -45,13 +45,15 @@ function FeatureModelRow({ f, current, isDefault, onSave }: RowProps) {
 
   const handleProviderChange = (p: string) => {
     setLocalProvider(p as Provider);
-    // Model list will refresh; user picks from new provider's list
+    setLocalModel("");
   };
 
   const handleModelChange = (m: string) => {
     setLocalModel(m);
     onSave({ provider: localProvider, model: m });
   };
+
+  const needsModelPick = localModel === "";
 
   return (
     <div style={s.row}>
@@ -82,6 +84,7 @@ function FeatureModelRow({ f, current, isDefault, onSave }: RowProps) {
             />
           </div>
         </div>
+        {needsModelPick && <div style={s.unsavedHint}>{t("models.pickModelHint")}</div>}
       </FormField>
     </div>
   );
