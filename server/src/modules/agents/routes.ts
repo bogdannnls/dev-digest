@@ -6,6 +6,8 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { AgentsService } from './service.js';
+import { PRFixtureMeta, SkillsEvalResult } from '../../vendor/shared/contracts/knowledge.js';
+import { listFixtures } from './eval-fixtures.js';
 
 /** `/providers/:id` addresses a provider by name, not a uuid. */
 const ProviderParams = z.object({ id: Provider });
@@ -62,10 +64,18 @@ const SetSkillsBody = z
     skill_ids: z.array(z.string().uuid()).optional(),
     skill_id: z.string().uuid().optional(),
     order: z.number().int().optional(),
+    enabled: z.boolean().optional(),
   })
   .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
     message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
   });
+
+const SkillLinkParams = z.object({
+  id: z.string().uuid(),
+  skillId: z.string().uuid(),
+});
+
+const ToggleSkillEnabledBody = z.object({ enabled: z.boolean() });
 
 export default async function agentsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -74,6 +84,18 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
   app.get('/agents', async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     return service.list(workspaceId);
+  });
+
+  // ---- GET /agents/eval-fixtures -----------------------------------------------
+  // MUST be registered before GET /agents/:id or Fastify will route "eval-fixtures"
+  // as an :id and fail UUID validation.
+  app.route({
+    method: 'GET',
+    url: '/agents/eval-fixtures',
+    schema: { response: { 200: z.array(PRFixtureMeta) } },
+    handler: async () => {
+      return listFixtures();
+    },
   });
 
   app.get('/agents/:id', { schema: { params: IdParams } }, async (req) => {
@@ -158,7 +180,44 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
       const links =
         body.skill_ids !== undefined
           ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+          : await service.linkSkill(
+              workspaceId,
+              req.params.id,
+              body.skill_id!,
+              body.order,
+              body.enabled,
+            );
+      if (!links) throw new NotFoundError('Agent not found');
+      return links;
+    },
+  );
+
+  app.patch(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams, body: ToggleSkillEnabledBody } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.setSkillEnabled(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+        req.body.enabled,
+      );
+      if (!links) throw new NotFoundError('Agent or skill link not found');
+      return links;
+    },
+  );
+
+  app.delete(
+    '/agents/:id/skills/:skillId',
+    { schema: { params: SkillLinkParams } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const links = await service.unlinkSkill(
+        workspaceId,
+        req.params.id,
+        req.params.skillId,
+      );
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },
@@ -174,5 +233,26 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
   app.get('/providers/:id/models', { schema: { params: ProviderParams } }, async (req) => {
     await getContext(app.container, req);
     return service.listModels(req.params.id);
+  });
+
+  // ---- POST /agents/:id/skills-eval --------------------------------------------
+  const SkillsEvalBody = z.object({ fixture_id: z.string().min(1) });
+
+  app.route({
+    method: 'POST',
+    url: '/agents/:id/skills-eval',
+    schema: {
+      params: IdParams,
+      body: SkillsEvalBody,
+      response: { 200: SkillsEvalResult },
+    },
+    handler: async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const { id } = req.params;
+      const { fixture_id } = req.body;
+      const result = await service.evaluateSkillsAB(workspaceId, id, fixture_id);
+      if (!result) throw new NotFoundError(`Agent ${id} not found`);
+      return result;
+    },
   });
 }

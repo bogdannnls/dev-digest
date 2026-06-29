@@ -8,6 +8,7 @@ export function toShellRepo(r: Repo): RepoSummary {
   return {
     id: r.id,
     full_name: r.full_name,
+    provider: r.provider,
     default_branch: r.default_branch,
     syncedLabel: r.last_polled_at ? "synced" : "not synced",
   };

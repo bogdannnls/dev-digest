@@ -71,6 +71,41 @@
       "when": 1781464392464,
       "tag": "0009_complex_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782201962632,
+      "tag": "0010_complex_human_robot",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782239862276,
+      "tag": "0011_add_convention_category_created_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782240599391,
+      "tag": "0012_first_bastion",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782243222000,
+      "tag": "0013_add_provider_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782251856000,
+      "tag": "0014_evidence_lines",
+      "breakpoints": true
     }
   ]
 }

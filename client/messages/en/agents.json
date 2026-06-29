@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "versions": "Versions",
       "evals": "Evals",
       "stats": "Stats",
       "ci": "CI"
@@ -89,11 +90,69 @@
   },
   "skills": {
     "title": "Skills",
-    "enabledCount": "{linked} of {total} enabled",
+    "enabledCount": "{enabled} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Drag to reorder.",
+    "addSkill": "Add skill",
+    "removeFromAgent": "Remove from agent",
+    "emptyTitle": "No skills linked yet",
+    "emptyBody": "Skills are reusable directives appended to this agent's system prompt. Add one to start.",
+    "evalButton": "Compare with vs without skills",
+    "evalEmpty": "Link at least one enabled skill to compare.",
+    "picker": {
+      "title": "Add a skill",
+      "subtitle": "Workspace skills not yet linked to this agent.",
+      "searchPlaceholder": "Search skills…",
+      "noUnlinked": "All workspace skills are already linked.",
+      "createSkill": "Create a new skill"
+    }
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "eval": {
+    "title": "Skills A/B",
+    "subtitle": "Run this agent on a packaged PR fixture, once with linked skills and once without. Two LLM calls.",
+    "fixtureLabel": "PR fixture",
+    "run": "Run comparison",
+    "running": "Running…",
+    "withColumn": "With skills",
+    "withoutColumn": "Without skills",
+    "noFindings": "No findings",
+    "badge": {
+      "new": "NEW",
+      "missing": "MISSING"
+    },
+    "tokens": "{n} tokens",
+    "cost": "${cost}",
+    "noFixtures": "No fixtures available.",
+    "error": "Could not run the comparison.",
+    "retry": "Retry",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
+  "versions": {
+    "title": "Version history",
+    "count": "{count, plural, one {# version} other {# versions}}",
+    "current": "current",
+    "onlyOne": "Only one version so far — this agent has not been edited yet.",
+    "loadError": "Could not load version history.",
+    "retry": "Retry",
+    "fields": {
+      "provider": "Provider",
+      "model": "Model",
+      "strategy": "Strategy",
+      "ciFailOn": "CI gate",
+      "repoIntel": "Repo intel",
+      "skills": "Skills",
+      "systemPrompt": "System prompt",
+      "outputSchema": "Output schema"
+    },
+    "outputSchemaDefault": "default",
+    "outputSchemaCustom": "custom",
+    "noSkills": "(none)",
+    "skillDeletedSuffix": "(deleted)",
+    "repoIntelOn": "on",
+    "repoIntelOff": "off"
   }
 }

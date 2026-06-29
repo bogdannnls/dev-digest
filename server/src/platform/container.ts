@@ -1,7 +1,7 @@
 import type {
   AuthProvider,
   SecretsProvider,
-  GitHubClient,
+  ForgeClient,
   GitClient,
   CodeIndex,
   Embedder,
@@ -23,10 +23,16 @@ import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
 import { PriceBook } from './price-book.js';
 import { ConfigError } from './errors.js';
+import { BitbucketClient } from '../adapters/bitbucket/rest.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { SkillsService } from '../modules/skills/service.js';
+import { AgentsService } from '../modules/agents/service.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
+import type { SkillsPort, AgentsPort } from '../modules/_shared/ports.js';
+import type { FeatureModelChoice, FeatureModelId } from '@devdigest/shared';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -40,7 +46,7 @@ import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.j
 export interface ContainerOverrides {
   secrets?: SecretsProvider;
   auth?: AuthProvider;
-  github?: GitHubClient;
+  forge?: Partial<Record<'github' | 'bitbucket', ForgeClient>>;
   git?: GitClient;
   codeIndex?: CodeIndex;
   embedder?: Embedder;
@@ -51,6 +57,14 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Cross-module ports — tests inject in-memory implementations. */
+  skills?: SkillsPort;
+  agents?: AgentsPort;
+  /** Override resolveFeatureModel for tests that don't seed the settings table. */
+  featureModelResolver?: (
+    workspaceId: string,
+    id: FeatureModelId,
+  ) => Promise<FeatureModelChoice>;
 }
 
 export class Container {
@@ -62,7 +76,7 @@ export class Container {
   readonly runBus: RunBus;
 
   private _git?: GitClient;
-  private _github?: GitHubClient;
+  private _forgeClients = new Map<string, ForgeClient>();
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -76,6 +90,8 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _skills?: SkillsPort;
+  private _agents?: AgentsPort;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -132,6 +148,39 @@ export class Container {
   }
 
   /**
+   * Skills port. Conventions (and any future module) consumes the skills
+   * capability through this port instead of importing SkillsService directly,
+   * keeping module-to-module dependencies one-way through the container.
+   */
+  get skills(): SkillsPort {
+    if (this.overrides.skills) return this.overrides.skills;
+    this._skills ??= new SkillsService(this);
+    return this._skills;
+  }
+
+  /** Agents port. Same rationale as `skills` — single source of cross-module wiring. */
+  get agents(): AgentsPort {
+    if (this.overrides.agents) return this.overrides.agents;
+    this._agents ??= new AgentsService(this);
+    return this._agents;
+  }
+
+  /**
+   * Resolve `id` to a concrete provider+model for this workspace: workspace
+   * override, else the registry default. Cross-module callers (e.g. conventions
+   * extractor) use this instead of importing from `modules/settings/`.
+   */
+  async resolveFeatureModel(
+    workspaceId: string,
+    id: FeatureModelId,
+  ): Promise<FeatureModelChoice> {
+    if (this.overrides.featureModelResolver) {
+      return this.overrides.featureModelResolver(workspaceId, id);
+    }
+    return resolveFeatureModel(this, workspaceId, id);
+  }
+
+  /**
    * Live OpenRouter pricing for cost attribution. The lister builds a bare
    * OpenRouter provider just for `/models` (no estimator needed) and degrades to
    * `[]` when no key is configured; the static `estimateCost` table is the
@@ -150,13 +199,32 @@ export class Container {
     return this._priceBook;
   }
 
-  async github(): Promise<GitHubClient> {
-    if (this.overrides.github) return this.overrides.github;
-    if (this._github) return this._github;
-    const token = await this.secrets.get('GITHUB_TOKEN');
-    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
-    return this._github;
+  async forgeClient(provider: 'github' | 'bitbucket'): Promise<ForgeClient> {
+    const injected = this.overrides.forge?.[provider];
+    if (injected) return injected;
+    const cached = this._forgeClients.get(provider);
+    if (cached) return cached;
+    if (provider === 'github') {
+      const token = await this.secrets.get('GITHUB_TOKEN');
+      if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
+      const client = new OctokitGitHubClient(token);
+      this._forgeClients.set(provider, client);
+      return client;
+    }
+    // Bitbucket: OAuth token OR App Password (token wins if both present)
+    const token = await this.secrets.get('BITBUCKET_TOKEN');
+    const username = await this.secrets.get('BITBUCKET_USERNAME');
+    const appPassword = await this.secrets.get('BITBUCKET_APP_PASSWORD');
+    if (!token && !(username && appPassword)) {
+      throw new ConfigError('Bitbucket credentials not configured — add BITBUCKET_TOKEN or BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD in Settings');
+    }
+    const client = new BitbucketClient({
+      token: token ?? undefined,
+      username: username ?? undefined,
+      appPassword: appPassword ?? undefined,
+    });
+    this._forgeClients.set(provider, client);
+    return client;
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
@@ -213,7 +281,7 @@ export class Container {
    */
   invalidateSecretCaches(): void {
     this.llmCache.clear();
-    this._github = undefined;
+    this._forgeClients.clear();
     this._embedder = undefined;
   }
 }

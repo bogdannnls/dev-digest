@@ -1,0 +1,6 @@
+{
+  "id": "api-contract-change",
+  "title": "Change /users/:id response shape",
+  "notes": "API Contract target: 'email' field renamed to 'emailAddress' on a public route — breaking change for any consumer.",
+  "diff": "diff --git a/src/routes/users.ts b/src/routes/users.ts\nindex aaaaaaa..bbbbbbb 100644\n--- a/src/routes/users.ts\n+++ b/src/routes/users.ts\n@@ -10,7 +10,7 @@ export const UserResponse = z.object({\n   id: z.string(),\n   name: z.string(),\n-  email: z.string(),\n+  emailAddress: z.string(),\n   createdAt: z.string(),\n });\n\n@@ -25,7 +25,7 @@ app.get('/users/:id', async (req, reply) => {\n   return reply.send({\n     id: user.id,\n     name: user.name,\n-    email: user.email,\n+    emailAddress: user.email,\n     createdAt: user.createdAt.toISOString(),\n   });\n });\n"
+}

@@ -16,7 +16,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         display: "flex",
         alignItems: "center",
         gap: 16,
-        padding: "0 24px",
+        padding: "0 18px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>

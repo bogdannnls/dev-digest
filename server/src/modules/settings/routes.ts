@@ -11,6 +11,7 @@ import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { GITHUB_PROVIDER, SECRET_KEY_BY_PROVIDER } from './constants.js';
 import { rowsToSettings } from './helpers.js';
+import { BitbucketClient } from '../../adapters/bitbucket/rest.js';
 
 /**
  * F1 — settings module.
@@ -84,8 +85,34 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         container.invalidateSecretCaches();
       }
       if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
+        const gh = await container.forgeClient('github');
         const login = await gh.currentLogin();
+        return { provider, ok: true, message: `Connected as @${login}` };
+      }
+      if (provider === 'bitbucket') {
+        // Persist App Password fields when present so the rest of the app can
+        // use them after a successful test.
+        if (req.body.username && container.secrets.set) {
+          await container.secrets.set('BITBUCKET_USERNAME', req.body.username);
+          if (req.body.appPassword) {
+            await container.secrets.set('BITBUCKET_APP_PASSWORD', req.body.appPassword);
+          }
+          container.invalidateSecretCaches();
+        }
+        // When credentials are supplied in this request, test THOSE specifically.
+        // A stored stale OAuth token would otherwise shadow a freshly-typed App
+        // Password (container reads BITBUCKET_TOKEN first). When no creds are
+        // supplied (e.g. the smoke test injects an override), fall through to the
+        // container so test fixtures keep working.
+        const hasRequestCreds = !!(key || req.body.username || req.body.appPassword);
+        const bb = hasRequestCreds
+          ? new BitbucketClient({
+              token: key,
+              username: req.body.username,
+              appPassword: req.body.appPassword,
+            })
+          : await container.forgeClient('bitbucket');
+        const login = await bb.currentLogin();
         return { provider, ok: true, message: `Connected as @${login}` };
       }
       const llm = await container.llm(provider);

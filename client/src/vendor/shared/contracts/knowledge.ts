@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Finding } from './findings.js';
 
 /**
  * Conformance, Onboarding, Eval, Memory, Conventions, Skills,
@@ -143,13 +144,23 @@ export type CommunitySkill = z.infer<typeof CommunitySkill>;
 // ---- Conventions ----
 export const ConventionCandidate = z.object({
   id: z.string(),
+  category: z.string(),
   rule: z.string(),
-  evidence_path: z.string(),
-  evidence_snippet: z.string(),
-  confidence: z.number().min(0).max(1),
+  evidence_path: z.string().nullish(),
+  evidence_snippet: z.string().nullish(),
+  evidence_start_line: z.number().int().nullish(),
+  evidence_end_line: z.number().int().nullish(),
+  confidence: z.number().min(0).max(1).nullish(),
   accepted: z.boolean(),
+  created_at: z.string(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+export const ConventionListResponse = z.object({
+  candidates: z.array(ConventionCandidate),
+  scanned_at: z.string().nullable(),
+});
+export type ConventionListResponse = z.infer<typeof ConventionListResponse>;
 
 // ---- Agents ----
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
@@ -189,5 +200,56 @@ export const AgentSkillLink = z.object({
   agent_id: z.string(),
   skill_id: z.string(),
   order: z.number().int(),
+  enabled: z.boolean(),
 });
 export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
+
+// The immutable config snapshot captured in `agent_versions` whenever an agent's
+// config changes (everything but `enabled`). Mirrors the shape written by the
+// agents repository — provider/model/prompt/output_schema/strategy/gate/repo_intel
+// plus the ordered skill ids linked at snapshot time. Used for reproducibility
+// (eval replays a past version) and for surfacing an agent's edit history.
+export const AgentVersionConfig = z.object({
+  provider: Provider,
+  model: z.string(),
+  system_prompt: z.string(),
+  output_schema: z.unknown().nullish(),
+  strategy: ReviewStrategy,
+  ci_fail_on: CiFailOn,
+  repo_intel: z.boolean(),
+  skills: z.array(z.string()),
+});
+export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
+
+export const AgentVersion = z.object({
+  agent_id: z.string(),
+  version: z.number().int(),
+  config: AgentVersionConfig,
+  created_at: z.string(),
+});
+export type AgentVersion = z.infer<typeof AgentVersion>;
+
+// ---- Spec D: Skills A/B eval -------------------------------------------------
+
+export const PRFixtureMeta = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  notes: z.string().optional(),
+});
+export type PRFixtureMeta = z.infer<typeof PRFixtureMeta>;
+
+export const SkillsEvalSide = z.object({
+  findings: z.array(Finding),
+  grounding: z.string(),
+  tokensIn: z.number().int().nonnegative(),
+  tokensOut: z.number().int().nonnegative(),
+  costUsd: z.number().nullable(),
+});
+export type SkillsEvalSide = z.infer<typeof SkillsEvalSide>;
+
+export const SkillsEvalResult = z.object({
+  with_skills: SkillsEvalSide,
+  without_skills: SkillsEvalSide,
+  fixture: PRFixtureMeta,
+});
+export type SkillsEvalResult = z.infer<typeof SkillsEvalResult>;

@@ -183,6 +183,15 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // Spec D — pass enabled linked-skill bodies to the review engine so the
+      // prompt includes the agent's configured rubrics/rules. Empty when the
+      // agent has no enabled links; assemblePrompt omits the section in that case
+      // (prompt identical to the pre-Spec-D shape — no regression).
+      const skillBodies = await this.agents.enabledSkillBodiesForAgent(agent.id);
+      if (skillBodies.length > 0) {
+        runLog.info(`Loaded ${skillBodies.length} skill body/bodies for agent "${agent.name}"`);
+      }
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -195,6 +204,9 @@ export class ReviewRunExecutor {
         // Per-agent review strategy (configured in the Agent editor); falls back
         // to the studio default. single-pass = whole diff in one call.
         strategy: agent.strategy ?? REVIEW_STRATEGY,
+        // Spec D — inject resolved skill bodies (omit the key when empty so the
+        // prompt assembly is identical to today for agents with no linked skills).
+        ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
         // T1.3 — pass the callers digest only when we built one. assemblePrompt
         // omits the section when this is empty/undefined.
         ...(callersDigest ? { callers: callersDigest } : {}),

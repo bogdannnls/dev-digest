@@ -230,10 +230,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error('DATABASE_URL is required');
     process.exit(1);
   }
+  const withSkills = process.argv.includes('--with-skills');
   const handle = createDb(url);
   seed(handle.db)
     .then(async (r) => {
       console.log('✓ seeded', r);
+      if (withSkills) {
+        const { seedWithSkills } = await import('./seed-skills.js');
+        await seedWithSkills(handle.db, r.workspaceId, r.userId);
+        console.log('✓ seeded Test Quality Reviewer + skills');
+      }
       await handle.close();
       process.exit(0);
     })

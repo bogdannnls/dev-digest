@@ -10,4 +10,5 @@ export const SECRET_KEY_BY_PROVIDER: Record<ConnTestProvider, SecretKey> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   github: 'GITHUB_TOKEN',
+  bitbucket: 'BITBUCKET_TOKEN',
 };

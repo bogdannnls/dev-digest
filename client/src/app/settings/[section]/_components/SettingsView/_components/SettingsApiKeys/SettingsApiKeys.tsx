@@ -78,6 +78,113 @@ function KeyRow({
   );
 }
 
+function BitbucketKeySection({
+  configured,
+}: {
+  configured: boolean | undefined;
+}) {
+  const t = useTranslations("settings");
+  const [oauthToken, setOauthToken] = React.useState("");
+  const [username, setUsername] = React.useState("");
+  const [appPassword, setAppPassword] = React.useState("");
+  const [revealOauth, setRevealOauth] = React.useState(false);
+  const [revealPass, setRevealPass] = React.useState(false);
+  const test = useTestConnection();
+  const [oauthRes, setOauthRes] = React.useState<{ ok: boolean; message: string } | null>(null);
+  const [appRes, setAppRes] = React.useState<{ ok: boolean; message: string } | null>(null);
+
+  const runOauth = async () => {
+    setOauthRes(null);
+    try {
+      const r = await test.mutateAsync({ provider: "bitbucket", key: oauthToken.trim() || undefined });
+      setOauthRes({ ok: r.ok, message: r.message });
+    } catch (e) {
+      setOauthRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });
+    }
+  };
+
+  const runAppPassword = async () => {
+    setAppRes(null);
+    try {
+      const r = await test.mutateAsync({
+        provider: "bitbucket",
+        username: username.trim() || undefined,
+        appPassword: appPassword.trim() || undefined,
+      });
+      setAppRes({ ok: r.ok, message: r.message });
+    } catch (e) {
+      setAppRes({ ok: false, message: e instanceof ApiError ? e.message : t("apiKeys.testFailed") });
+    }
+  };
+
+  return (
+    <div>
+      <FormField
+        label={t("apiKeys.bitbucketOauthLabel")}
+        hint={t("apiKeys.bitbucketOauthHint")}
+        right={<StatusBadge configured={configured} />}
+      >
+        <div style={s.keyRow}>
+          <div style={s.keyInput}>
+            <TextInput
+              value={oauthToken}
+              onChange={setOauthToken}
+              mono
+              type={revealOauth ? "text" : "password"}
+              placeholder={t("apiKeys.placeholder")}
+              suffix={
+                <Icon.EyeOff size={14} style={s.revealIcon} onClick={() => setRevealOauth((r) => !r)} />
+              }
+            />
+          </div>
+          <Button kind="secondary" size="md" onClick={runOauth} disabled={test.isPending}>
+            {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
+          </Button>
+        </div>
+      </FormField>
+      {oauthRes && (
+        <div style={s.result(oauthRes.ok)}>
+          {oauthRes.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
+          {oauthRes.message}
+        </div>
+      )}
+      <FormField label={t("apiKeys.bitbucketUsernameLabel")} hint={t("apiKeys.bitbucketUsernameHint")}>
+        <TextInput
+          value={username}
+          onChange={setUsername}
+          mono
+          placeholder={t("apiKeys.bitbucketUsernamePlaceholder")}
+        />
+      </FormField>
+      <FormField label={t("apiKeys.bitbucketAppPasswordLabel")} hint={t("apiKeys.bitbucketAppPasswordHint")}>
+        <div style={s.keyRow}>
+          <div style={s.keyInput}>
+            <TextInput
+              value={appPassword}
+              onChange={setAppPassword}
+              mono
+              type={revealPass ? "text" : "password"}
+              placeholder={t("apiKeys.placeholder")}
+              suffix={
+                <Icon.EyeOff size={14} style={s.revealIcon} onClick={() => setRevealPass((r) => !r)} />
+              }
+            />
+          </div>
+          <Button kind="secondary" size="md" onClick={runAppPassword} disabled={test.isPending}>
+            {test.isPending ? t("apiKeys.testing") : t("apiKeys.testConnection")}
+          </Button>
+        </div>
+      </FormField>
+      {appRes && (
+        <div style={s.result(appRes.ok)}>
+          {appRes.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
+          {appRes.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsApiKeys() {
   const t = useTranslations("settings");
   const { data: status } = useSecretsStatus();
@@ -93,6 +200,7 @@ export function SettingsApiKeys() {
           configured={status?.[row.provider]}
         />
       ))}
+      <BitbucketKeySection configured={status?.bitbucket} />
     </div>
   );
 }

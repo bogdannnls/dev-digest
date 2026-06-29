@@ -1,8 +1,8 @@
-import type { CiFailOn, Finding, GitHubReviewPayload, Review, UnifiedDiff } from '@devdigest/shared';
+import type { CiFailOn, Finding, ForgeReviewPayload, Review, UnifiedDiff } from '@devdigest/shared';
 import { buildLineIndex } from '../grounding.js';
 
 /**
- * Turn a grounded Review into a GitHubReviewPayload (markdown body + optional
+ * Turn a grounded Review into a ForgeReviewPayload (markdown body + optional
  * inline comments + the GitHub review event). Pure — shared by the CI runner
  * (posts via octokit) and, eventually, the studio's Compose. Mirrors the body /
  * inline formatting used by the server's compose service so reviews look the
@@ -73,7 +73,7 @@ function severityCounts(findings: Finding[]): string {
 
 function composeBody(
   findings: Finding[],
-  event: GitHubReviewPayload['event'],
+  event: ForgeReviewPayload['event'],
   title: string,
 ): string {
   const header =
@@ -145,7 +145,7 @@ function inlineComments(
   return out;
 }
 
-export function toReviewPayload(review: Review, opts: ToReviewOptions = {}): GitHubReviewPayload {
+export function toReviewPayload(review: Review, opts: ToReviewOptions = {}): ForgeReviewPayload {
   const inline = opts.inline ?? true;
   const title = opts.title ?? 'DevDigest Review';
   const failOn = opts.failOn ?? 'critical';
@@ -153,7 +153,7 @@ export function toReviewPayload(review: Review, opts: ToReviewOptions = {}): Git
   const comments = inline ? inlineComments(review.findings, lineIndex) : [];
   // Deterministic event from severities + gate policy (ignores model verdict):
   // no findings → APPROVE; gate tripped → REQUEST_CHANGES; otherwise → COMMENT.
-  const event: GitHubReviewPayload['event'] =
+  const event: ForgeReviewPayload['event'] =
     review.findings.length === 0
       ? 'APPROVE'
       : gateTriggered(review.findings, failOn)

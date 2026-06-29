@@ -1,0 +1,152 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { extractConventions } from './extractor.js';
+import type { Container } from '../../platform/container.js';
+
+// Mock the prompt loader so tests don't need the file on disk
+vi.mock('../../platform/prompts.js', () => ({
+  loadPromptTemplate: vi.fn().mockResolvedValue('You are a coding convention detector.'),
+}));
+
+const mockEmit = vi.fn();
+
+const SAMPLE_CONTENT = `const result = await db.users.find(id);
+const posts = await db.posts.findMany({ userId });`;
+
+function makeContainer(candidates: unknown[] = []): Partial<Container> {
+  return {
+    repoIntel: {
+      getConventionSamples: vi.fn().mockResolvedValue(['src/api/users.ts']),
+    } as unknown as Container['repoIntel'],
+    git: {
+      // GitClient.readFile signature: readFile(repo: RepoRef, path: string): Promise<string>
+      readFile: vi.fn().mockResolvedValue(SAMPLE_CONTENT),
+    } as unknown as Container['git'],
+    llm: vi.fn().mockResolvedValue({
+      completeStructured: vi.fn().mockResolvedValue({
+        data: { candidates },
+      }),
+    }),
+    resolveFeatureModel: vi
+      .fn()
+      .mockResolvedValue({ provider: 'openai', model: 'gpt-4o' }),
+  };
+}
+
+describe('extractConventions', () => {
+  beforeEach(() => mockEmit.mockClear());
+
+  it('returns verified candidates whose snippet appears in sampled content', async () => {
+    const container = makeContainer([
+      {
+        category: 'async-style',
+        rule: 'Use async/await instead of .then()',
+        evidence_path: 'src/api/users.ts',
+        evidence_snippet: 'const result = await db.users.find(id);',
+        confidence: 0.91,
+      },
+    ]);
+
+    const result = await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+
+    expect(result).toHaveLength(1);
+    const first = result[0]!;
+    expect(first.category).toBe('async-style');
+    expect(first.confidence).toBe(0.91);
+    // Snippet is line 1 of SAMPLE_CONTENT, single-line.
+    expect(first.evidenceStartLine).toBe(1);
+    expect(first.evidenceEndLine).toBe(1);
+    // 'done' is no longer emitted from the extractor — the service emits it
+    // after insertMany commits, so the UI's invalidate-on-done refetch sees
+    // the fresh rows. Extractor's job ends at returning verified candidates.
+    const emittedKinds = mockEmit.mock.calls.map((c) => c[0]);
+    expect(emittedKinds).not.toContain('done');
+  });
+
+  it('computes 1-based start/end lines for a multi-line snippet', async () => {
+    const container = makeContainer([
+      {
+        category: 'async-style',
+        rule: 'Sequential awaits',
+        evidence_path: 'src/api/users.ts',
+        evidence_snippet: SAMPLE_CONTENT, // both lines
+        confidence: 0.9,
+      },
+    ]);
+
+    const result = await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.evidenceStartLine).toBe(1);
+    expect(result[0]!.evidenceEndLine).toBe(2);
+  });
+
+  it('discards candidates whose snippet is NOT in the sampled content', async () => {
+    const container = makeContainer([
+      {
+        category: 'naming',
+        rule: 'Use camelCase',
+        evidence_path: 'src/api/users.ts',
+        evidence_snippet: 'this snippet does not appear in the file at all',
+        confidence: 0.8,
+      },
+    ]);
+    const result = await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('discards candidates from a path not in the sampled set', async () => {
+    const container = makeContainer([
+      {
+        category: 'typing',
+        rule: 'Annotate return types',
+        evidence_path: 'src/not-sampled-file.ts',
+        evidence_snippet: 'function foo(): string',
+        confidence: 0.85,
+      },
+    ]);
+    const result = await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('emits sampling and analyzing progress events but NOT done', async () => {
+    // 'done' is the service's signal that "data is committed to the DB" —
+    // emitting it from here would race the UI's invalidate-on-done refetch
+    // against the not-yet-completed insertMany. See service.runExtraction.
+    const container = makeContainer([]);
+    await extractConventions(
+      container as unknown as Container,
+      'ws-1',
+      'repo-1',
+      { owner: 'acme', name: 'api', defaultBranch: 'main' },
+      mockEmit,
+    );
+    const kinds = mockEmit.mock.calls.map((c) => c[0]);
+    expect(kinds).toContain('sampling');
+    expect(kinds).toContain('analyzing');
+    expect(kinds).not.toContain('done');
+  });
+});

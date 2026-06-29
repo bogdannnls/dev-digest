@@ -38,7 +38,11 @@ export function useUpdateSettings() {
 export function useTestConnection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: ConnTestProvider | { provider: ConnTestProvider; key?: string }) => {
+    mutationFn: (
+      input:
+        | ConnTestProvider
+        | { provider: ConnTestProvider; key?: string; username?: string; appPassword?: string },
+    ) => {
       const body = typeof input === "string" ? { provider: input } : input;
       return api.post<ConnTestResult>("/settings/test-connection", body);
     },

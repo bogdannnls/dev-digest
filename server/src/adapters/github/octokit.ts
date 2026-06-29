@@ -1,11 +1,11 @@
 import { Octokit } from 'octokit';
 import type {
-  GitHubClient,
+  ForgeClient,
   RepoRef,
   PrMeta,
   PrDetail,
   PrStatus,
-  GitHubReviewPayload,
+  ForgeReviewPayload,
   CreateReviewCommentInput,
   PrReviewComment,
   OpenPrPayload,
@@ -24,10 +24,10 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 }
 
 /**
- * GitHubClient over Octokit REST — thin. PAT auth (fine-grained).
+ * ForgeClient implementation for GitHub via Octokit REST — thin. PAT auth (fine-grained).
  * Reads PR list/detail/files/commits/issue; posts reviews; opens PRs.
  */
-export class OctokitGitHubClient implements GitHubClient {
+export class OctokitGitHubClient implements ForgeClient {
   private octokit: Octokit;
 
   constructor(token: string) {
@@ -140,7 +140,7 @@ export class OctokitGitHubClient implements GitHubClient {
   async postReview(
     repo: RepoRef,
     n: number,
-    review: GitHubReviewPayload,
+    review: ForgeReviewPayload,
   ): Promise<{ id: string }> {
     return withRetry(() =>
       withTimeout(

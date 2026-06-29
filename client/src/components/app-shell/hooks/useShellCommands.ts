@@ -18,14 +18,17 @@ export function useShellCommands(): Command[] {
   const { theme, toggle } = useTheme();
 
   return React.useMemo<Command[]>(() => {
+    // Disabled nav items map to routes that don't exist yet — hide from palette.
     const navCmds: Command[] = NAV.flatMap((g) =>
-      g.items.map((it) => ({
-        id: it.key,
-        label: t("commandPalette.goTo", { label: t(`nav.${it.key}`) }),
-        group: g.section,
-        icon: it.icon,
-        run: () => router.push(resolveHref(it.href, repoId)),
-      }))
+      g.items
+        .filter((it) => !it.disabled)
+        .map((it) => ({
+          id: it.key,
+          label: t("commandPalette.goTo", { label: t(`nav.${it.key}`) }),
+          group: g.section,
+          icon: it.icon,
+          run: () => router.push(resolveHref(it.href, repoId)),
+        })),
     );
     navCmds.push({
       id: "settings",

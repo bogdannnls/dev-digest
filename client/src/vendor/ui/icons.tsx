@@ -79,6 +79,7 @@ import {
   Workflow,
   PanelRight,
   CornerDownRight,
+  MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -150,6 +151,7 @@ export const Icon = {
   Moon,
   Sun,
   Menu,
+  MoreHorizontal,
   Star,
   Upload,
   Globe,
