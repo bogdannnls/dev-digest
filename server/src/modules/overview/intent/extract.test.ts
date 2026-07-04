@@ -83,7 +83,7 @@ describe('extractIntent', () => {
     expect(result.tokensIn).toBe(100);
     expect(result.costUsd).toBeCloseTo(0.0009, 6);
     // References survive the round-trip but are stripped to the wire shape
-    // (bodyHash/error/body are dropped by PrIntentDto's Zod schema).
+    // (bodyHash/error/body are dropped by the explicit `toReferenceDto` mapper).
     expect(result.dto.references).toHaveLength(2);
     expect(result.dto.references[0]).toEqual({
       kind: 'github_issue',

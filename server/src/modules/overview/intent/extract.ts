@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { PrIntentDto, RiskAreaIcon } from '@devdigest/shared';
 import type { Container } from '../../../platform/container.js';
 import { loadPromptTemplate } from '../../../platform/prompts.js';
-import type { CollectedReference } from './types.js';
+import { toReferenceDto, type CollectedReference } from './types.js';
 
 /**
  * LLM output payload only — NOT the full `PrIntentDto`. `references`, `model`,
@@ -107,7 +107,7 @@ export async function extractIntent(
 
   const dto = PrIntentDto.parse({
     ...result.data,
-    references: input.references,
+    references: input.references.map(toReferenceDto),
     model: result.model,
     cost: {
       tokensIn: result.tokensIn,

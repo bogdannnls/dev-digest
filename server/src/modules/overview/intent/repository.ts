@@ -2,7 +2,8 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { IntentReferenceRow, RiskAreaIcon } from '../../../db/schema.js';
-import type { IntentReferenceDto, PrIntentDto } from '../../../vendor/shared/contracts/brief.js';
+import type { PrIntentDto } from '../../../vendor/shared/contracts/brief.js';
+import { toReferenceDto } from './types.js';
 
 /**
  * Return shape of `extractIntent` (T6, `server/src/modules/overview/intent/extract.ts`),
@@ -31,16 +32,6 @@ export type IntentRow = {
   bodyHash: string;
   data: PrIntentDto;
 };
-
-/** Maps a persisted `IntentReferenceRow` to the wire `IntentReferenceDto` — never leaks `bodyHash`/`error`. */
-function toReferenceDto(row: IntentReferenceRow): IntentReferenceDto {
-  return {
-    kind: row.kind,
-    id: row.id,
-    status: row.status,
-    bodyChars: row.bodyChars,
-  };
-}
 
 /**
  * Thin Drizzle wrapper around `pr_intent`. No business logic — freshness
