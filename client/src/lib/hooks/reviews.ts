@@ -23,6 +23,16 @@ export interface ActiveRun {
   ran_at: string | null;
 }
 
+/** Same as ActiveRun plus repo/PR coordinates so a caller can link back to the
+ *  PR page without another fetch. Returned by GET /runs/active. */
+export interface ActiveRunGlobal extends ActiveRun {
+  pr_id: string;
+  pr_number: number;
+  repo_id: string;
+  repo_owner: string;
+  repo_name: string;
+}
+
 /** In-flight runs for a PR, from the server (agent_runs where status='running').
    Survives reloads/devices; polls while anything is running so it self-clears. */
 export function usePrActiveRuns(prId: string | null | undefined) {
@@ -31,6 +41,20 @@ export function usePrActiveRuns(prId: string | null | undefined) {
     queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
     enabled: !!prId,
     refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+  });
+}
+
+/** All in-flight runs in the workspace. Powers the global ActiveRunsStack.
+ *  Poll cadence matches usePrActiveRuns: 4s while any run is active, stops on
+ *  empty — no traffic while idle. Cross-tab discovery relies on
+ *  refetchOnWindowFocus so a run started in another tab appears on refocus,
+ *  not on a background timer that burns network for nothing. */
+export function useActiveRuns() {
+  return useQuery({
+    queryKey: ["active-runs"],
+    queryFn: () => api.get<ActiveRunGlobal[]>(`/runs/active`),
+    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+    refetchOnWindowFocus: true,
   });
 }
 

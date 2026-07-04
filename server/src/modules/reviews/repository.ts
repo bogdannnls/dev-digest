@@ -77,6 +77,12 @@ export class ReviewRepository {
     return runRepo.activeRunsForPull(this.db, workspaceId, prId);
   }
 
+  /** All in-flight runs in the workspace, joined with repo + PR coordinates.
+   *  Powers the global bottom-right ActiveRunsStack. */
+  activeRuns(workspaceId: string): Promise<runRepo.ActiveRunGlobal[]> {
+    return runRepo.activeRuns(this.db, workspaceId);
+  }
+
   /** All runs for a PR (any status), newest first — the PR run history. */
   listRunsForPull(workspaceId: string, prId: string): Promise<RunSummary[]> {
     return runRepo.listRunsForPull(this.db, workspaceId, prId);

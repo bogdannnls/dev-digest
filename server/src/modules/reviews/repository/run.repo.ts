@@ -36,6 +36,61 @@ export async function activeRunsForPull(
   }));
 }
 
+export interface ActiveRunGlobal {
+  run_id: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  ran_at: string | null;
+  pr_id: string;
+  pr_number: number;
+  repo_id: string;
+  repo_owner: string;
+  repo_name: string;
+}
+
+/**
+ * All in-flight runs across every PR in a workspace. Each row carries the
+ * repo/PR coordinates the client needs to link back to the PR page without a
+ * follow-up fetch. Powers the global bottom-right ActiveRunsStack.
+ */
+export async function activeRuns(
+  db: Db,
+  workspaceId: string,
+): Promise<ActiveRunGlobal[]> {
+  const rows = await db
+    .select({
+      id: t.agentRuns.id,
+      agentId: t.agentRuns.agentId,
+      ranAt: t.agentRuns.ranAt,
+      agentName: t.agents.name,
+      prId: t.agentRuns.prId,
+      prNumber: t.pullRequests.number,
+      repoId: t.repos.id,
+      repoOwner: t.repos.owner,
+      repoName: t.repos.name,
+    })
+    .from(t.agentRuns)
+    .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
+    .innerJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
+    .innerJoin(t.repos, eq(t.repos.id, t.pullRequests.repoId))
+    .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.status, 'running')))
+    .orderBy(desc(t.agentRuns.ranAt));
+  // agentRuns.prId is nullable in the schema; the innerJoin above guarantees a
+  // matching pullRequests row, so prId is non-null in every result — the ! is
+  // the honest signal for that narrowing.
+  return rows.map((r) => ({
+    run_id: r.id,
+    agent_id: r.agentId,
+    agent_name: r.agentName ?? null,
+    ran_at: r.ranAt ? r.ranAt.toISOString() : null,
+    pr_id: r.prId!,
+    pr_number: r.prNumber,
+    repo_id: r.repoId,
+    repo_owner: r.repoOwner,
+    repo_name: r.repoName,
+  }));
+}
+
 /** All runs for a PR (any status), newest first — the PR run history. */
 export async function listRunsForPull(
   db: Db,
