@@ -141,7 +141,9 @@ Ship a read-through cached `IntentCard` on the PR Overview tab: given a PR, an L
 - files_to_touch:
   - `server/src/modules/overview/intent/references.ts` (create)
   - `server/src/modules/overview/intent/references.test.ts` (create)
+  - `server/src/modules/overview/intent/types.ts` (create — see amendment below)
 - depends_on: [P1-T4]
+- **Amendment 2026-07-04 (design gap surfaced during T6 self-check):** spec §6.3's `IntentReferenceRow` is the *persisted* shape (bodyHash + bodyChars only, no raw text — by design, hash-stored). But `extractIntent` (T6) needs the raw body text to inline inside `<external_reference>` prompt blocks. Fix: introduce a transient in-memory type `CollectedReference = IntentReferenceRow & { body: string | null }` in a new `server/src/modules/overview/intent/types.ts`, plus a `toReferenceRow(r)` helper that strips `body` for persistence. `collectReferences` returns `CollectedReference[]`; `extractIntent` consumes `CollectedReference[]`; the service (T8, upcoming) calls `toReferenceRow` before passing to `repo.upsert`. No spec §6.3 change — the persisted shape is unchanged.
 - description: Implement `collectReferences(container, workspaceId, body, repoOwner, repoName, log)` per spec §10.4 shape: calls `collectGithubIssues` (real, using `resolveLinkedIssues` + `container.forgeClient('github')` + `getIssue`, clipping each issue body to 8000 chars, computing a hash, and mapping fetch failures to `status: 'unreachable'`/`'not_found'` rows rather than throwing), plus `collectTrackerTickets` and `collectAllowlistedUrls` as literal stub functions that immediately return `[]` (documented with a `// P2` / `// P3` comment referencing the follow-up plan). Combine via `Promise.all`, dedupe by `(kind, id)`, cap at 5 total (spec §8.2). Each internal per-issue fetch uses `Promise.allSettled` so one failing issue fetch doesn't fail the whole collector (spec §8.2 "best-effort").
 - skills_to_apply:
   - `typescript-expert`
