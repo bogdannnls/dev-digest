@@ -166,3 +166,15 @@ What worked: tracing the 'done' SSE event ordering across three files:
 That GET raced `insertMany`. When the GET won, it hit the table during the brief window after delete-but-before-insert and returned `[]`. The UI updated cache to empty → cards disappeared. Fix: move the `'done'` emit from extractor into `service.runExtraction` immediately after `insertMany`, right before `runBus.complete(scanId)`.
 
 Why it matters: this is a class of bug, not a one-off. Any SSE background job that (a) wipes then writes, (b) emits a "finished" event from a deep layer, and (c) has a UI that refetches on that event will race the same way. When introducing a new SSE-driven job, emit the user-visible "done" event from the layer that owns the DB transaction — not the layer that produces the data. `server/src/modules/reviews/` uses the same RunBus pattern and is worth a future audit for the same shape.
+
+## 2026-07-04 — `resolveLinkedIssue` cannot be wrapped around the plural form
+Context: extending `resolveLinkedIssue` to `resolveLinkedIssues` for the intent layer (T4). The natural refactor is to make the singular a thin wrapper `resolveLinkedIssues(...)[0]`.
+What we tried: plural processes all three regex sources (closing-keyword, bare `#NN`, full URL) and returns deduped results; singular delegates to `[0]` of that.
+What worked: kept the singular's ORIGINAL regex inlined, not delegating. See `server/src/adapters/github/octokit.ts:129`.
+Why it matters: the plural form buckets closing-keyword refs first before bare-`#NN`, so a bare `#5` earlier in the body would lose to a `Closes #12` later. That silently changes `PrDetail.linked_issue`'s document-order semantics — a real behavior break, not a stylistic call. If someone tries to DRY the two later, the singular's regex must stay independent.
+
+## 2026-07-04 — Bare-`#NN` cap must count only newly-added refs, not raw regex matches
+Context: `resolveLinkedIssues` caps bare-`#NN` matches at 5 alongside closing-keyword and URL passes (spec §10.1).
+What we tried: naive `.slice(0, 5)` on the raw regex-match array for the bare pass.
+What worked: threading the cap through the dedup loop — increment the counter only when a match is genuinely new (not already in the `seen` set from earlier passes). See `server/src/adapters/github/octokit.ts:129`.
+Why it matters: a body that repeats `#12` (already captured earlier as `Closes #12`) would consume the bare-cap budget and starve later unique refs. Passes any size-check test; only a semantic test with duplicates catches it. A future refactor that "simplifies" back to `.slice(0, 5)` re-introduces the bug.
