@@ -96,8 +96,12 @@ export function useDeleteRun(prId: string | null | undefined) {
 
 /** Request cancellation of an in-flight run (takes effect at the next step). */
 export function useCancelRun() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.post<{ ok: boolean }>(`/runs/${runId}/cancel`),
+    // A cancelled run stops being active — kick the global indicator to re-poll
+    // instead of leaving a stale card on-screen until the next natural refresh.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["active-runs"] }),
   });
 }
 
@@ -155,6 +159,14 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      // Nudge the run-status caches so the newly-queued run appears immediately:
+      //  - per-PR active list (the PR page's RunStatus / timeline)
+      //  - global active list (the bottom-right ActiveRunsStack)
+      // Without these the empty caches stay `[]` and their refetchInterval
+      // stays `false` — no polling would kick in until window focus.
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["active-runs"] });
     },
   });
 }
