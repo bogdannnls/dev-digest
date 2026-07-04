@@ -227,12 +227,22 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     const { workspaceId } = await getContext(app.container, req);
     const agent = await service.get(workspaceId, req.params.id);
     if (!agent) throw new NotFoundError('Agent not found');
-    return service.listModels(agent.provider);
+    try {
+      return await service.listModels(agent.provider);
+    } catch (err) {
+      req.log.warn({ err, provider: agent.provider }, 'listModels failed');
+      return [];
+    }
   });
 
   app.get('/providers/:id/models', { schema: { params: ProviderParams } }, async (req) => {
     await getContext(app.container, req);
-    return service.listModels(req.params.id);
+    try {
+      return await service.listModels(req.params.id);
+    } catch (err) {
+      req.log.warn({ err, provider: req.params.id }, 'listModels failed');
+      return [];
+    }
   });
 
   // ---- POST /agents/:id/skills-eval --------------------------------------------
