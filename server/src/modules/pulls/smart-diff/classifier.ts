@@ -91,6 +91,17 @@ function classifyByPattern(path: string): SmartDiffRole {
 }
 
 /**
+ * Path-only classifier surface — same rules as `classifyFiles`, but without
+ * the size-override branch (no additions/deletions to check).
+ *
+ * Used by the l03 homework `verify` script and any caller that only cares
+ * about pattern-based classification.
+ */
+export function classifyFile(path: string): SmartDiffRole {
+  return classifyByPattern(path);
+}
+
+/**
  * Classifies each changed file into a `SmartDiffRole`.
  *
  * Priority order (first match wins): boilerplate > wiring > core (default).
