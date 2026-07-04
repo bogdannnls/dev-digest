@@ -32,6 +32,7 @@ export function ReviewRunAccordion({
   targetRunId = null,
   targetNonce = 0,
   severityFilter,
+  focusFindingId = null,
 }: {
   review: ReviewRecord;
   prId: string;
@@ -44,6 +45,9 @@ export function ReviewRunAccordion({
   targetNonce?: number;
   /** When set, only findings with this severity are shown (driven by ?severity= URL param). */
   severityFilter?: "CRITICAL" | "WARNING" | "SUGGESTION" | null;
+  /** Deep-link finding id from ?findingId= — the matching card auto-expands +
+   *  scrolls into view (driven from Smart Diff badge clicks). */
+  focusFindingId?: string | null;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -160,6 +164,7 @@ export function ReviewRunAccordion({
             repoFullName={repoFullName}
             headSha={headSha}
             severityFilter={severityFilter}
+            focusFindingId={focusFindingId}
           />
         </div>
       )}

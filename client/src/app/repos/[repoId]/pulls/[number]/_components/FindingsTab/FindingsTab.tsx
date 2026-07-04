@@ -51,6 +51,15 @@ export function FindingsTab({
   const severityFilter: ValidSeverity | null =
     raw && VALID_SEVERITIES.has(raw as ValidSeverity) ? (raw as ValidSeverity) : null;
 
+  // Deep-link from a Smart Diff badge: ?findingId=<uuid>. The card auto-expands
+  // and its containing accordion auto-opens. Not the same as the hash-based
+  // scroll below — hash comes from external deep-links (bookmarks, GitHub URLs).
+  const focusFindingId = searchParams.get("findingId");
+  const focusRunId = React.useMemo(() => {
+    if (!focusFindingId) return null;
+    return runs.find((r) => r.findings.some((f) => f.id === focusFindingId))?.run_id ?? null;
+  }, [focusFindingId, runs]);
+
   // Scroll-to-anchor on mount when the hash matches a known finding.
   // Runs whenever the rendered finding count changes (i.e., after the list renders).
   const totalFindings = runs.reduce((sum, r) => sum + r.findings.length, 0);
@@ -91,6 +100,14 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
+
+  // Diff badge → Findings: reuse the same target mechanism so the accordion
+  // holding the focused finding opens + scrolls into view, even if it isn't the
+  // newest run. Retriggers when findingId changes (user clicks a second badge
+  // while the Findings tab is already mounted).
+  React.useEffect(() => {
+    if (focusRunId) setTarget((p) => ({ runId: focusRunId, n: (p?.n ?? 0) + 1 }));
+  }, [focusRunId, focusFindingId]);
 
   return (
     <section>
@@ -180,12 +197,13 @@ export function FindingsTab({
             key={review.id}
             review={review}
             prId={prId}
-            defaultOpen={i === 0}
+            defaultOpen={focusRunId ? review.run_id === focusRunId : i === 0}
             repoFullName={repoFullName}
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}
             severityFilter={severityFilter}
+            focusFindingId={focusFindingId}
           />
         ))
       )}

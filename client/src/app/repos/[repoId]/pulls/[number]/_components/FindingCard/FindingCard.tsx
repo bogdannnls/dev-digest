@@ -27,6 +27,7 @@ export function FindingCard({
   f,
   focused,
   defaultExpanded,
+  focusFindingId,
   onAction,
   pending,
   repoFullName,
@@ -35,6 +36,10 @@ export function FindingCard({
   f: FindingRecord;
   focused?: boolean;
   defaultExpanded?: boolean;
+  /** When this equals `f.id`, the card force-expands and scrolls into view. Used
+   *  for Smart Diff → Findings deep-links (?findingId=). Reactive so a second
+   *  click while the Findings tab is already mounted still works. */
+  focusFindingId?: string | null;
   onAction?: (action: FindingActionKind, reply?: string) => void;
   pending?: boolean;
   repoFullName?: string | null;
@@ -42,6 +47,18 @@ export function FindingCard({
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Reactive focus: when ?findingId=<id> changes while this component is
+  // mounted (user clicks another Smart Diff badge without leaving the Findings
+  // tab), expand + scroll to this card if it matches.
+  React.useEffect(() => {
+    if (focusFindingId && focusFindingId === f.id) {
+      setExpanded(true);
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [focusFindingId, f.id]);
+
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const fileHref =
     repoFullName && headSha
@@ -52,7 +69,7 @@ export function FindingCard({
   const muted = accepted || dismissed;
 
   return (
-    <div id={`finding-${f.id}`} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
+    <div ref={rootRef} id={`finding-${f.id}`} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as Severity} compact />

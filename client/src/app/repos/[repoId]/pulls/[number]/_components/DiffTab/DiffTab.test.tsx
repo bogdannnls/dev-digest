@@ -1,11 +1,19 @@
 import type React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
-import type { PrFile, SmartDiff } from "@devdigest/shared";
+import type { FindingRecord, PrFile, SmartDiff } from "@devdigest/shared";
 import shellMessages from "../../../../../../../../messages/en/shell.json";
 import { DiffTab } from "./DiffTab";
+
+// next/navigation mock — DiffTab now soft-navigates on badge click.
+const { replaceMock } = vi.hoisted(() => ({ replaceMock: vi.fn() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: replaceMock, push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
+  useParams: () => ({ repoId: "r1", number: "42" }),
+}));
 
 // Module mocks — per client/INSIGHTS.md, `vi.mock` factories that return
 // `vi.fn()` directly (no closed-over const) don't need `vi.hoisted`. We only
@@ -22,7 +30,10 @@ vi.mock("@/lib/hooks/reviews", () => ({
 import { useSmartDiff } from "@/lib/hooks/smart-diff";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  replaceMock.mockReset();
+});
 
 const files: PrFile[] = [
   { path: "src/core.ts", additions: 10, deletions: 2, patch: "@@ -1,1 +1,1 @@\n-a\n+b" },
@@ -51,6 +62,28 @@ function smartDiffFixture(overrides?: Partial<SmartDiff>): SmartDiff {
     split_suggestion: { too_big: false, total_lines: 16, proposed_splits: [] },
     ...overrides,
   };
+}
+
+function finding(overrides: Partial<FindingRecord>): FindingRecord {
+  return {
+    id: "f-default",
+    review_id: "r-1",
+    severity: "WARNING",
+    category: "correctness",
+    title: "Sample finding",
+    file: "src/core.ts",
+    start_line: 10,
+    end_line: 10,
+    rationale: "why",
+    suggestion: null,
+    confidence: 0.9,
+    kind: null,
+    trifecta_components: null,
+    evidence: null,
+    accepted_at: null,
+    dismissed_at: null,
+    ...overrides,
+  } as FindingRecord;
 }
 
 function renderDiffTab(props: Partial<React.ComponentProps<typeof DiffTab>> = {}) {
@@ -102,10 +135,17 @@ describe("DiffTab", () => {
       isError: false,
     });
 
-    renderDiffTab();
+    // Header finding count is now driven by allFindings (source of truth for
+    // per-finding badges), not the smart-diff finding_lines hint.
+    const allFindings = [
+      finding({ id: "f-1", file: "src/core.ts", start_line: 10 }),
+      finding({ id: "f-2", file: "src/core.ts", start_line: 20 }),
+    ];
+
+    renderDiffTab({ allFindings });
 
     // Scope to elements exposing aria-expanded — the group headers, not the
-    // per-file finding badges (which are plain buttons with no aria-expanded).
+    // per-finding badges (which are plain buttons with no aria-expanded).
     const coreHeader = screen.getByRole("button", { name: /core/i, expanded: true });
     const wiringHeader = screen.getByRole("button", { name: /wiring/i, expanded: true });
     const boilerplateHeader = screen.getByRole("button", { name: /boilerplate/i, expanded: false });
@@ -150,7 +190,7 @@ describe("DiffTab", () => {
     expect(screen.queryByText(/consider splitting/i)).not.toBeInTheDocument();
   });
 
-  it("renders a finding-count badge only for files with finding_lines, and clicking it scrolls to and expands the group", async () => {
+  it("renders one badge per finding labeled basename:line, and clicking it soft-navigates to the findings tab with the finding id", async () => {
     const user = userEvent.setup();
     mockComments();
     (useSmartDiff as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -168,24 +208,31 @@ describe("DiffTab", () => {
       isError: false,
     });
 
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+    const allFindings = [
+      finding({ id: "f-core-10", file: "src/core.ts", start_line: 10, severity: "CRITICAL" }),
+      finding({ id: "f-core-20", file: "src/core.ts", start_line: 20, severity: "WARNING" }),
+      finding({ id: "f-boil-5", file: "src/boilerplate.ts", start_line: 5, severity: "SUGGESTION" }),
+    ];
 
-    renderDiffTab();
+    renderDiffTab({ allFindings });
 
-    // src/core.ts has findings -> badge present with count text.
-    expect(screen.getByText(/core\.ts · 2 findings/i)).toBeInTheDocument();
-    // src/wiring.ts has none -> no badge text for it.
-    expect(screen.queryByText(/wiring\.ts · \d+ finding/i)).not.toBeInTheDocument();
+    // core.ts has two findings — expect two per-line badges. wiring.ts has none.
+    expect(screen.getByText("core.ts:10")).toBeInTheDocument();
+    expect(screen.getByText("core.ts:20")).toBeInTheDocument();
+    expect(screen.queryByText(/^wiring\.ts:/)).not.toBeInTheDocument();
 
-    // boilerplate group is collapsed by default, so its badge isn't rendered
-    // until expanded — click the header first, then the badge appears.
+    // boilerplate group starts collapsed → its badges aren't in the DOM yet.
+    expect(screen.queryByText("boilerplate.ts:5")).not.toBeInTheDocument();
     const boilerplateHeader = screen.getByRole("button", { name: /boilerplate/i, expanded: false });
     await user.click(boilerplateHeader);
-    expect(screen.getByRole("button", { name: /boilerplate/i, expanded: true })).toBeInTheDocument();
+    expect(screen.getByText("boilerplate.ts:5")).toBeInTheDocument();
 
-    const badge = screen.getByText(/boilerplate\.ts · 1 finding/i);
-    await user.click(badge);
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    // Clicking a badge should soft-navigate to Findings tab with the finding id.
+    await user.click(screen.getByText("core.ts:10"));
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    const url = replaceMock.mock.calls[0]![0] as string;
+    expect(url).toContain("/repos/r1/pulls/42");
+    expect(url).toContain("tab=findings");
+    expect(url).toContain("findingId=f-core-10");
   });
 });

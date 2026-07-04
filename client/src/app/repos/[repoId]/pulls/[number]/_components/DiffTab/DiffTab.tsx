@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SectionLabel, Button, Badge } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
@@ -16,21 +17,6 @@ interface DiffTabProps {
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
   allFindings: FindingRecord[];
-}
-
-// CRITICAL > WARNING > SUGGESTION — index used as a "higher is worse" rank.
-const SEVERITY_RANK: Record<Severity, number> = { SUGGESTION: 0, WARNING: 1, CRITICAL: 2 };
-
-/** Highest severity per file path, derived from every finding across all runs. */
-function computeSeverityByFile(allFindings: FindingRecord[]): Map<string, Severity> {
-  const map = new Map<string, Severity>();
-  for (const f of allFindings) {
-    const current = map.get(f.file);
-    if (!current || SEVERITY_RANK[f.severity] > SEVERITY_RANK[current]) {
-      map.set(f.file, f.severity);
-    }
-  }
-  return map;
 }
 
 function basenameOf(path: string): string {
@@ -49,31 +35,29 @@ const SEVERITY_BG: Record<Severity, string> = {
   SUGGESTION: "var(--sugg-bg)",
 };
 
-/** One Smart Diff group: header + (when expanded) finding badges + files. */
+/** One Smart Diff group: header + (when expanded) per-finding badges + files. */
 function DiffGroupSection({
   group,
   collapsed,
   groupPrFiles,
-  severityByFile,
+  groupFindings,
   commenting,
   onToggle,
-  onBadgeClick,
-  registerRef,
+  onFindingClick,
 }: {
   group: { role: SmartDiffRole; files: SmartDiffFile[] };
   collapsed: boolean;
   groupPrFiles: PrFile[];
-  severityByFile: Map<string, Severity>;
+  /** Findings whose file belongs to this group, sorted by file+start_line. */
+  groupFindings: FindingRecord[];
   commenting: DiffCommentApi;
   onToggle: () => void;
-  onBadgeClick: () => void;
-  registerRef: (el: HTMLDivElement | null) => void;
+  onFindingClick: (findingId: string) => void;
 }) {
-  const findingCount = group.files.reduce((sum, f) => sum + f.finding_lines.length, 0);
-  const filesWithFindings = group.files.filter((sf) => sf.finding_lines.length > 0);
+  const findingCount = groupFindings.length;
 
   return (
-    <div data-group={group.role} ref={registerRef} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div data-group={group.role} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <GroupHeader
         role={group.role}
         fileCount={group.files.length}
@@ -92,28 +76,26 @@ function DiffGroupSection({
             marginLeft: 4,
           }}
         >
-          {filesWithFindings.length > 0 && (
+          {groupFindings.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {filesWithFindings.map((sf) => {
-                const severity = severityByFile.get(sf.path);
-                return (
-                  <button
-                    key={sf.path}
-                    type="button"
-                    onClick={onBadgeClick}
-                    style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}
+              {groupFindings.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => onFindingClick(f.id)}
+                  title={f.title}
+                  aria-label={`Open finding ${f.title} at ${f.file}:${f.start_line}`}
+                  style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}
+                >
+                  <Badge
+                    color={SEVERITY_COLOR[f.severity]}
+                    bg={SEVERITY_BG[f.severity]}
+                    mono
                   >
-                    <Badge
-                      color={severity ? SEVERITY_COLOR[severity] : undefined}
-                      bg={severity ? SEVERITY_BG[severity] : undefined}
-                      mono
-                    >
-                      {basenameOf(sf.path)} · {sf.finding_lines.length}{" "}
-                      {sf.finding_lines.length === 1 ? "finding" : "findings"}
-                    </Badge>
-                  </button>
-                );
-              })}
+                    {basenameOf(f.file)}:{f.start_line}
+                  </Badge>
+                </button>
+              ))}
             </div>
           )}
           <DiffViewer files={groupPrFiles} commenting={commenting} />
@@ -124,6 +106,10 @@ function DiffGroupSection({
 }
 
 export function DiffTab({ prId, filesCount, files, canComment, allFindings }: DiffTabProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const params = useParams<{ repoId: string; number: string }>();
+
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
@@ -137,25 +123,32 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
     boilerplate: true,
   });
 
-  // Pragmatic simplification (see task note): DiffViewer renders per-file cards
-  // internally and doesn't expose a per-file DOM anchor, so badge clicks scroll
-  // to the group's outer wrapper rather than the individual file card. Anchors
-  // are collected via ref callbacks into a plain Map (no state — DOM refs don't
-  // need to trigger re-renders).
-  const groupRefs = React.useRef(new Map<SmartDiffRole, HTMLDivElement>());
-  // A badge click on a collapsed group must expand it AND scroll to it. Expanding
-  // is a state update (re-render), so the scroll has to happen in an effect that
-  // runs after that re-render commits — not synchronously in the click handler,
-  // where the target might not be in the DOM yet (or might be about to move).
-  const [pendingScrollRole, setPendingScrollRole] = React.useState<SmartDiffRole | null>(null);
+  // Group findings by their file so each Smart Diff group can render only
+  // its own badges. Sorted by (file, start_line) for stable, top-to-bottom order.
+  const findingsByPath = React.useMemo(() => {
+    const map = new Map<string, FindingRecord[]>();
+    for (const f of allFindings) {
+      const arr = map.get(f.file);
+      if (arr) arr.push(f);
+      else map.set(f.file, [f]);
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => a.start_line - b.start_line);
+    }
+    return map;
+  }, [allFindings]);
 
-  React.useEffect(() => {
-    if (!pendingScrollRole) return;
-    groupRefs.current.get(pendingScrollRole)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setPendingScrollRole(null);
-  }, [pendingScrollRole, collapsed]);
-
-  const severityByFile = React.useMemo(() => computeSeverityByFile(allFindings), [allFindings]);
+  // Badge click → soft-navigate to Findings tab focused on this finding.
+  // router.replace keeps the entry out of history (no "back" back into diff-with-focus).
+  const handleFindingClick = React.useCallback(
+    (findingId: string) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.set("tab", "findings");
+      sp.set("findingId", findingId);
+      router.replace(`/repos/${params.repoId}/pulls/${params.number}?${sp.toString()}`);
+    },
+    [router, searchParams, params.repoId, params.number],
+  );
 
   const commentCount = comments?.length ?? 0;
 
@@ -184,13 +177,6 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
 
   const hasGroups = !!smartDiff && smartDiff.groups.some((g) => g.files.length > 0);
   const useFlatView = !smartDiff || smartDiffError || !hasGroups;
-
-  const handleBadgeClick = (role: SmartDiffRole) => {
-    if (collapsed[role]) {
-      setCollapsed((prev) => ({ ...prev, [role]: false }));
-    }
-    setPendingScrollRole(role);
-  };
 
   return (
     <section>
@@ -237,6 +223,9 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
               const groupPrFiles = group.files
                 .map((sf: SmartDiffFile) => filesByPath.get(sf.path))
                 .filter((f): f is PrFile => !!f);
+              const groupFindings = group.files.flatMap(
+                (sf) => findingsByPath.get(sf.path) ?? [],
+              );
 
               return (
                 <DiffGroupSection
@@ -244,14 +233,10 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
                   group={group}
                   collapsed={collapsed[group.role]}
                   groupPrFiles={groupPrFiles}
-                  severityByFile={severityByFile}
+                  groupFindings={groupFindings}
                   commenting={commenting}
                   onToggle={() => setCollapsed((prev) => ({ ...prev, [group.role]: !prev[group.role] }))}
-                  onBadgeClick={() => handleBadgeClick(group.role)}
-                  registerRef={(el) => {
-                    if (el) groupRefs.current.set(group.role, el);
-                    else groupRefs.current.delete(group.role);
-                  }}
+                  onFindingClick={handleFindingClick}
                 />
               );
             })}
