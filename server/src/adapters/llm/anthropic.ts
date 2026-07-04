@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import PQueue from 'p-queue';
 import type {
   LLMProvider,
   ModelInfo,
@@ -20,6 +21,18 @@ import { ExternalServiceError } from '../../platform/errors.js';
  */
 const IDLE_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
+
+/**
+ * Per-key concurrency ceiling. When N reviewers fire against the same Anthropic
+ * key, requests beyond this limit queue LOCALLY (before the HTTP call is made)
+ * instead of queuing at Anthropic's rate-limit gate — where a queued request
+ * holds an open connection with no bytes flowing, tripping withIdleTimeout as
+ * if the stream were hung. Serializing on our side keeps TTFB tight.
+ *
+ * Override with the ANTHROPIC_MAX_CONCURRENCY env var if a Tier-3+ key can push
+ * higher without queuing.
+ */
+const DEFAULT_CONCURRENCY = 3;
 
 /**
  * Claude 4.x+ models (Opus 4.x, Sonnet 4.x, Haiku 4.x) and the Fable family
@@ -56,9 +69,15 @@ function splitSystem(messages: ChatMessage[]): {
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic' as const;
   private client: Anthropic;
+  private queue: PQueue;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, opts: { concurrency?: number } = {}) {
     this.client = new Anthropic({ apiKey });
+    const envN = Number(process.env.ANTHROPIC_MAX_CONCURRENCY);
+    const concurrency =
+      opts.concurrency ??
+      (Number.isFinite(envN) && envN > 0 ? envN : DEFAULT_CONCURRENCY);
+    this.queue = new PQueue({ concurrency });
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -74,7 +93,14 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() => this.doComplete(req));
+    // withRetry wraps the queue slot (not the other way around) so a 429/5xx
+    // backoff sleep doesn't hold a concurrency slot while it waits.
+    return withRetry(() => this.gated(() => this.doComplete(req)));
+  }
+
+  /** Serialize the HTTP-touching work onto the per-key queue. */
+  private gated<T>(fn: () => Promise<T>): Promise<T> {
+    return this.queue.add(fn) as Promise<T>;
   }
 
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
@@ -121,32 +147,34 @@ export class AnthropicProvider implements LLMProvider {
 
     const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(async () => {
-        const stream = this.client.messages.stream({
-          model: req.model,
-          system: system || undefined,
-          messages,
-          max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-          ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0 }),
-          tools: [
-            {
-              name: toolName,
-              description: `Return the result as ${req.schemaName}.`,
-              input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-            },
-          ],
-          tool_choice: { type: 'tool', name: toolName },
-        });
-        // Drain events under the idle-timer. `input_json_delta` chunks assemble
-        // into the tool's `input`; the SDK reconstructs the final ToolUseBlock
-        // for us — we only iterate to keep the stream alive.
-        for await (const _event of withIdleTimeout(stream, idleMs, () =>
-          stream.controller.abort(),
-        )) {
-          // no-op
-        }
-        return stream.finalMessage();
-      });
+      const res = await withRetry(() =>
+        this.gated(async () => {
+          const stream = this.client.messages.stream({
+            model: req.model,
+            system: system || undefined,
+            messages,
+            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+            ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0 }),
+            tools: [
+              {
+                name: toolName,
+                description: `Return the result as ${req.schemaName}.`,
+                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
+              },
+            ],
+            tool_choice: { type: 'tool', name: toolName },
+          });
+          // Drain events under the idle-timer. `input_json_delta` chunks assemble
+          // into the tool's `input`; the SDK reconstructs the final ToolUseBlock
+          // for us — we only iterate to keep the stream alive.
+          for await (const _event of withIdleTimeout(stream, idleMs, () =>
+            stream.controller.abort(),
+          )) {
+            // no-op
+          }
+          return stream.finalMessage();
+        }),
+      );
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;
 
