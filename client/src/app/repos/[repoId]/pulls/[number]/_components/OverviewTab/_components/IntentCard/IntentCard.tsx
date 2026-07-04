@@ -26,6 +26,21 @@ const RISK_ICON: Record<RiskAreaIcon, IconName> = {
   globe: "Globe",
 };
 
+/**
+ * Per-icon colour for risk-area chips. Tailwind-palette mid-tones — readable
+ * on both light and dark backgrounds without needing per-theme overrides.
+ * Semantic mapping matches the spec §8.5 rationale (shield=security-blue,
+ * zap=performance-amber, database=data-emerald, globe=network-teal, and
+ * package=purple for "packaging/deps", the only one without an obvious tint).
+ */
+const RISK_ICON_COLOR: Record<RiskAreaIcon, string> = {
+  shield: "#3b82f6",
+  package: "#a855f7",
+  zap: "#f59e0b",
+  database: "#10b981",
+  globe: "#14b8a6",
+};
+
 const STALE_REASON_LABEL: Record<PrIntentStaleReason, string> = {
   head_sha: "the PR was updated",
   body: "the description changed",
@@ -110,9 +125,13 @@ function formatRelativeTime(iso: string): string {
 }
 
 export function IntentCard({ prId }: IntentCardProps) {
-  const { status, data, staleReasons, error, progress, refresh } = useOverviewIntent(prId);
+  const { status, data, staleReasons, error, progress, isRefreshing, refresh } =
+    useOverviewIntent(prId);
   const toast = useToast();
-  const refreshDisabled = status === "loading" || status === "computing";
+  // Disable Refresh while any compute is in flight: server-driven `computing`
+  // (first-view cold path), OR user-initiated `isRefreshing` (this hook's
+  // refresh() clicked the button). Prevents double-firing the rate limit.
+  const refreshDisabled = status === "loading" || status === "computing" || isRefreshing;
 
   const handleRefresh = React.useCallback(async () => {
     try {
@@ -193,9 +212,16 @@ export function IntentCard({ prId }: IntentCardProps) {
         Intent
       </SectionLabel>
       <div style={s.card}>
-        {status === "ready-stale" && staleReasons && (
+        {status === "ready-stale" && staleReasons && !isRefreshing && (
           <div style={s.staleBanner} role="status">
             <span>{staleBannerText(staleReasons)}</span>
+          </div>
+        )}
+
+        {isRefreshing && (
+          <div style={s.refreshingBanner} role="status" data-testid="intent-refreshing">
+            <Icon.RefreshCw size={14} style={{ animation: "ddspin 1s linear infinite" }} />
+            <span>{progress ?? "Refreshing intent…"}</span>
           </div>
         )}
 
@@ -226,7 +252,7 @@ export function IntentCard({ prId }: IntentCardProps) {
               const RiskIcon = Icon[RISK_ICON[risk.icon]];
               return (
                 <span key={i} style={s.riskChip}>
-                  <RiskIcon size={12} />
+                  <RiskIcon size={12} style={{ color: RISK_ICON_COLOR[risk.icon] }} />
                   {risk.label}
                 </span>
               );

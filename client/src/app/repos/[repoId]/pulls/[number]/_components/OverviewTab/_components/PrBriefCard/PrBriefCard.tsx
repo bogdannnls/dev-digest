@@ -70,6 +70,8 @@ export function PrBriefCard({ prId }: PrBriefCardProps) {
           gap: 16,
           padding: 16,
           border: "1px solid var(--border, #e5e7eb)",
+          borderLeft: "4px solid var(--accent-brief, #14b8a6)",
+          background: "var(--accent-brief-bg, rgba(20, 184, 166, 0.06))",
           borderRadius: 8,
           alignItems: "center",
         }}

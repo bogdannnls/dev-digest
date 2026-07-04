@@ -44,6 +44,7 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: null,
       progress: null,
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -58,6 +59,7 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: null,
       progress: "Collecting references…",
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -73,6 +75,7 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: null,
       progress: null,
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -91,6 +94,7 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: null,
       progress: null,
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -104,6 +108,7 @@ describe("IntentCard", () => {
       staleReasons: ["head_sha"],
       error: null,
       progress: null,
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -118,6 +123,7 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: "Extraction failed",
       progress: null,
+      isRefreshing: false,
       refresh: vi.fn(),
     });
     render(<IntentCard prId="pr-1" />);
@@ -136,11 +142,32 @@ describe("IntentCard", () => {
       staleReasons: null,
       error: null,
       progress: null,
+      isRefreshing: false,
       refresh,
     });
     render(<IntentCard prId="pr-1" />);
     await user.click(screen.getByRole("button", { name: /refresh/i }));
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/try again in 42s/i));
+  });
+
+  it("renders an in-progress banner (and disables Refresh) while a user-initiated refresh is streaming", () => {
+    mockedUseOverviewIntent.mockReturnValue({
+      status: "ready",
+      data: baseIntent,
+      staleReasons: null,
+      error: null,
+      progress: "Extracting intent…",
+      isRefreshing: true,
+      refresh: vi.fn(),
+    });
+    render(<IntentCard prId="pr-1" />);
+    // Prior data stays visible so the user has context while the recompute streams.
+    expect(screen.getByText(baseIntent.goal)).toBeInTheDocument();
+    // The banner announces the recompute and picks up SSE progress messages.
+    const banner = screen.getByTestId("intent-refreshing");
+    expect(banner).toHaveTextContent(/extracting intent/i);
+    // Refresh button is disabled to prevent double-firing the rate limit.
+    expect(screen.getByRole("button", { name: /refresh/i })).toBeDisabled();
   });
 });

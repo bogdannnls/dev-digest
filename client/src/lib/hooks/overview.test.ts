@@ -119,4 +119,41 @@ describe("useOverviewIntent", () => {
 
     await expect(result.current.refresh()).rejects.toMatchObject({ status: 429 });
   });
+
+  it("on refresh() sets isRefreshing, opens the SSE for the returned runId, and clears on done", async () => {
+    // Server-side row is fresh (ready) — the refresh POST is what triggers
+    // the recompute, and its runId is what the hook must subscribe to.
+    const ready: PrIntentResponse = { status: "ready", data: intentDto };
+    vi.mocked(api.get).mockResolvedValue(ready as never);
+    vi.mocked(api.post).mockResolvedValue({ runId: "refresh-run" } as never);
+
+    const { result, invalidateSpy } = renderWithClient();
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.isRefreshing).toBe(false);
+    // No stream should be open yet — the row is 'ready', no server-side compute.
+    expect(FakeEventSource.instances).toHaveLength(0);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    // The hook must expose isRefreshing = true immediately after the POST,
+    // even though GET /intent would still return the pre-refresh 'ready' row.
+    await waitFor(() => expect(result.current.isRefreshing).toBe(true));
+    // Data stays visible during the refresh — the user has context while
+    // waiting for the recomputed row to land.
+    expect(result.current.data).toEqual(intentDto);
+
+    const es = FakeEventSource.instances[0];
+    if (!es) throw new Error("expected an EventSource for the refresh runId");
+    expect(es.url).toContain("/pulls/pr-1/overview/intent/stream?runId=refresh-run");
+
+    act(() => es.emit("info", { msg: "Extracting intent" }));
+    await waitFor(() => expect(result.current.progress).toBe("Extracting intent"));
+
+    act(() => es.emit("done"));
+    await waitFor(() => expect(result.current.isRefreshing).toBe(false));
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["overview-intent", "pr-1"] });
+  });
 });

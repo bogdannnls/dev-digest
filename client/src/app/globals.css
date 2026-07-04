@@ -4,6 +4,24 @@
    web fonts. */
 @import "../vendor/ui/styles.css";
 
+/* Per-block accent colors for the PR Overview tab. Additive to the vendor
+   palette; kept out of `vendor/ui/styles.css` (which is do-not-touch). Each
+   card in the Overview tab picks its own accent so the tab reads as a set
+   of coloured sections rather than a wall of neutral bordered boxes. */
+:root,
+[data-theme="dark"] {
+  --accent-intent: #8b5cf6;
+  --accent-intent-bg: rgba(139, 92, 246, 0.1);
+  --accent-brief: #14b8a6;
+  --accent-brief-bg: rgba(20, 184, 166, 0.1);
+}
+[data-theme="light"] {
+  --accent-intent: #7c3aed;
+  --accent-intent-bg: rgba(124, 58, 237, 0.08);
+  --accent-brief: #0d9488;
+  --accent-brief-bg: rgba(13, 148, 136, 0.08);
+}
+
 @font-face {
   font-family: "Inter";
   font-style: normal;
