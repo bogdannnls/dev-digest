@@ -18,8 +18,15 @@ import { ExternalServiceError } from '../../platform/errors.js';
  * Idle-timeout on the stream (not total wall-clock). If Anthropic sends no bytes
  * for this long the request is treated as hung and aborted. Total generation
  * time is unbounded — a long-but-progressing stream never trips this.
+ *
+ * Note: this doubles as a TTFB ceiling. The SDK's async iterator yields only
+ * when the wire has bytes, so the timer counts against time-to-first-token as
+ * well as mid-stream stalls. Opus 4.x with extended thinking on a skills-heavy
+ * prompt regularly emits its first token 60-120s after `.stream()`, so 180s
+ * is the floor that keeps legitimate slow-thinking requests alive while still
+ * catching a genuinely hung connection.
  */
-const IDLE_TIMEOUT_MS = 60_000;
+const IDLE_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
 /**

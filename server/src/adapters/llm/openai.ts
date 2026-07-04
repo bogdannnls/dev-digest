@@ -17,8 +17,12 @@ import { ExternalServiceError } from '../../platform/errors.js';
  * Idle-timeout on the stream (not total wall-clock). If OpenAI sends no chunks
  * for this long the request is treated as hung and aborted. Total generation
  * time is unbounded — a long-but-progressing stream never trips this.
+ *
+ * Note: this doubles as a TTFB ceiling. Reasoning models (o3, gpt-5) can spend
+ * 60+ seconds thinking before emitting the first token, so 180s is the floor.
+ * Kept in sync with the Anthropic adapter for symmetric behaviour.
  */
-const IDLE_TIMEOUT_MS = 60_000;
+const IDLE_TIMEOUT_MS = 180_000;
 /** Total-timeout for the (non-streaming) embeddings endpoint. */
 const EMBED_TIMEOUT_MS = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
