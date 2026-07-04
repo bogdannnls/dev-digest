@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PrMeta, PrDetail, ForgeClient, PrReviewComment } from '@devdigest/shared';
+import type { PrMeta, PrDetail, ForgeClient, PrReviewComment, SmartDiffResponse } from '@devdigest/shared';
 import { PrCommentInput, emptyFindingsBuckets } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
@@ -9,6 +9,7 @@ import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 import type { Db } from '../../db/client.js';
+import { composeSmartDiff, type ComposerFile, type ComposerFinding } from './smart-diff/service.js';
 
 /**
  * Compute per-severity findings (counts + top-5 titles) for the given PR ids,
@@ -342,6 +343,56 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       };
     }
   });
+
+  app.get(
+    '/pulls/:id/smart-diff',
+    { schema: { params: IdParams } },
+    async (req): Promise<SmartDiffResponse> => {
+      const { workspaceId } = await getContext(container, req);
+      const [pr] = await container.db
+        .select()
+        .from(t.pullRequests)
+        .where(
+          and(eq(t.pullRequests.workspaceId, workspaceId), eq(t.pullRequests.id, req.params.id)),
+        );
+      if (!pr) throw new NotFoundError('Pull request not found');
+
+      const fileRows = await container.db
+        .select({
+          path: t.prFiles.path,
+          additions: t.prFiles.additions,
+          deletions: t.prFiles.deletions,
+        })
+        .from(t.prFiles)
+        .where(eq(t.prFiles.prId, pr.id));
+      const files: ComposerFile[] = fileRows.map((f) => ({
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions,
+      }));
+
+      // Latest review (kind='review') for this PR — mirrors `computeFindingsByPr`'s
+      // "latest review per PR" semantics so Smart Diff stays consistent with the
+      // findings shown elsewhere on the PR.
+      const [latestReview] = await container.db
+        .select({ id: t.reviews.id })
+        .from(t.reviews)
+        .where(and(eq(t.reviews.prId, pr.id), eq(t.reviews.kind, 'review')))
+        .orderBy(desc(t.reviews.createdAt))
+        .limit(1);
+
+      let findings: ComposerFinding[] = [];
+      if (latestReview) {
+        const findingRows = await container.db
+          .select({ file: t.findings.file, startLine: t.findings.startLine })
+          .from(t.findings)
+          .where(and(eq(t.findings.reviewId, latestReview.id), isNull(t.findings.dismissedAt)));
+        findings = findingRows.map((f) => ({ file: f.file, start_line: f.startLine }));
+      }
+
+      return composeSmartDiff(files, findings);
+    },
+  );
 
   // ---- Inline review comments (Files changed tab) -------------------------
   // Proxied live to GitHub (no local persistence): GET reflects existing PR
