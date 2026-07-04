@@ -8,12 +8,17 @@ import type {
   StructuredResult,
   ChatMessage,
 } from '@devdigest/shared';
-import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { withRetry, withIdleTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 
-const DEFAULT_TIMEOUT = 60_000;
+/**
+ * Idle-timeout on the stream (not total wall-clock). If Anthropic sends no bytes
+ * for this long the request is treated as hung and aborted. Total generation
+ * time is unbounded — a long-but-progressing stream never trips this.
+ */
+const IDLE_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
 
 /**
@@ -69,18 +74,26 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT));
+    return withRetry(() => this.doComplete(req));
   }
 
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
     const { system, rest } = splitSystem(req.messages);
-    const res = await this.client.messages.create({
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
+    const stream = this.client.messages.stream({
       model: req.model,
       system: system || undefined,
       messages: rest,
       max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
       ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0.2 }),
     });
+    // Drain the SSE with an idle-timer that resets on every event. `finalMessage`
+    // below throws if the stream ended prematurely, so we don't need to handle
+    // partial state here.
+    for await (const _event of withIdleTimeout(stream, idleMs, () => stream.controller.abort())) {
+      // no-op: we only need the assembled Message from finalMessage()
+    }
+    const res = await stream.finalMessage();
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -106,27 +119,34 @@ export class AnthropicProvider implements LLMProvider {
     let tokensOut = 0;
     let lastRaw = '';
 
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
-        withTimeout(
-          this.client.messages.create({
-            model: req.model,
-            system: system || undefined,
-            messages,
-            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0 }),
-            tools: [
-              {
-                name: toolName,
-                description: `Return the result as ${req.schemaName}.`,
-                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: toolName },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-      );
+      const res = await withRetry(async () => {
+        const stream = this.client.messages.stream({
+          model: req.model,
+          system: system || undefined,
+          messages,
+          max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+          ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0 }),
+          tools: [
+            {
+              name: toolName,
+              description: `Return the result as ${req.schemaName}.`,
+              input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
+            },
+          ],
+          tool_choice: { type: 'tool', name: toolName },
+        });
+        // Drain events under the idle-timer. `input_json_delta` chunks assemble
+        // into the tool's `input`; the SDK reconstructs the final ToolUseBlock
+        // for us — we only iterate to keep the stream alive.
+        for await (const _event of withIdleTimeout(stream, idleMs, () =>
+          stream.controller.abort(),
+        )) {
+          // no-op
+        }
+        return stream.finalMessage();
+      });
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;
 

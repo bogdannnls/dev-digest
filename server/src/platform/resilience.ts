@@ -23,6 +23,65 @@ export async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   }
 }
 
+/**
+ * Wraps an async iterable with an idle timeout. Resets the timer on each yielded
+ * chunk; if `idleMs` pass without a chunk, calls `onIdle` (typically a stream
+ * `AbortController.abort()`) and throws TimeoutError on the next await.
+ *
+ * The invariant is liveness, not total duration — an LLM stream that keeps
+ * emitting tokens never trips this, even if the total wall-clock is minutes.
+ * Correct shape for LLM completions: latency scales with output tokens, so a
+ * total-timeout would fail legitimate long generations. Idle-timeout catches
+ * genuinely hung streams (provider outage, network wedge).
+ */
+export function withIdleTimeout<T>(
+  iter: AsyncIterable<T>,
+  idleMs: number,
+  onIdle: () => void,
+): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const it = iter[Symbol.asyncIterator]();
+      try {
+        while (true) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const idlePromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              try {
+                onIdle();
+              } catch {
+                // best-effort abort; don't mask the timeout error with an abort throw
+              }
+              reject(new TimeoutError(idleMs));
+            }, idleMs);
+          });
+          const nextPromise = it.next();
+          let result: IteratorResult<T>;
+          try {
+            result = await Promise.race([nextPromise, idlePromise]);
+          } catch (err) {
+            // Timer won the race → onIdle() aborted the stream. The orphaned
+            // nextPromise will reject shortly with the abort error; swallow it
+            // so it does not surface as an unhandled rejection.
+            nextPromise.catch(() => undefined);
+            throw err;
+          } finally {
+            clearTimeout(timer);
+          }
+          if (result.done) return;
+          yield result.value;
+        }
+      } finally {
+        try {
+          await it.return?.();
+        } catch {
+          /* best-effort iterator cleanup */
+        }
+      }
+    },
+  };
+}
+
 export interface RetryOptions {
   retries?: number;
   baseDelayMs?: number;
