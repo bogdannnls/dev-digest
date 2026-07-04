@@ -55,7 +55,10 @@ Ship a read-through cached `IntentCard` on the PR Overview tab: given a PR, an L
   - `server/src/db/migrations/meta/_journal.json` (modify — new entry)
   - `server/src/db/migrations/meta/0015_snapshot.json` (create, via `drizzle-kit generate`)
   - `server/src/db/schema/reviews.ts` (modify — extend `prIntent` table)
+  - `server/src/modules/reviews/repository/pull.repo.ts` (modify — remove dead `upsertIntent`/`getIntent` and their unused `Intent` import; see amendment note)
+  - `server/src/modules/reviews/repository.ts` (modify — remove the wrapper methods `upsertIntent`/`getIntent` from `ReviewRepository` and their unused `Intent` import)
 - depends_on: []
+- **Amendment 2026-07-04 (scope expansion after initial dispatch):** the reviews module has a pre-existing pair of dead functions `upsertIntent`/`getIntent` (`pull.repo.ts:49-68` + `repository.ts:130-136` wrappers) that write to `pr_intent` with the old 4-column shape. Grep confirms zero call sites. Making `head_sha`/`body_hash` `NOT NULL` (per spec §6.1) breaks the typecheck of these dead functions. They violate the spec's single-writer rule anyway. Delete them (both fns + both wrappers + the unused `Intent` import in both files) as part of T1 — ~30 lines total, zero behavior change.
 - description: Add `head_sha`, `body_hash`, `references` (jsonb, default `'[]'`), `risk_areas` (jsonb, default `'[]'`), `model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `computed_at` to `pr_intent`, per spec §6.1. Give `head_sha`/`body_hash` a temporary `DEFAULT ''` then drop the default in a second statement (spec's exact SQL) so any pre-existing rows back-fill cleanly while future inserts must supply both explicitly. Update the Drizzle schema in `reviews.ts` to match exactly (import `numeric` alongside the existing `pg-core` imports), including the `IntentReferenceRow` and risk-area row shapes as inline `$type<...>()` generics (define these two row types locally in `reviews.ts` or import from a new `server/src/modules/overview/intent/types.ts` if you prefer — pick one, document in the file). Run `pnpm db:generate` from `server/` after editing the schema so the journal + snapshot are generated correctly (do not hand-write the journal entry — see INSIGHTS above on `when`-ordering and snapshot-chain collisions). If `db:generate` fails due to the known broken snapshot chain (root INSIGHTS/server INSIGHTS 2026-06-24 entries), fall back to hand-writing the `.sql` + a `_journal.json` entry whose `when` is `Date.now()` at generation time, and skip the per-migration snapshot (documented fallback in the same INSIGHTS entries).
 - skills_to_apply:
   - `drizzle-orm-patterns`
@@ -66,6 +69,7 @@ Ship a read-through cached `IntentCard` on the PR Overview tab: given a PR, an L
 - definition_of_done:
   - `pr_intent` table in the Drizzle schema has all 9 new columns with exact names/types from spec §6.1.
   - `pnpm db:generate` (or the documented hand-written fallback) produces a migration file, and `meta/_journal.json` contains a new entry with `when` greater than the previous max.
+  - Dead functions `upsertIntent` and `getIntent` are removed from `server/src/modules/reviews/repository/pull.repo.ts` and their wrapper methods removed from `ReviewRepository` in `server/src/modules/reviews/repository.ts`; the unused `Intent` import is dropped from both files.
   - `pnpm typecheck` is clean.
   - A subsequent `startPg()`-based integration test (any existing one, e.g. from the `overview` module) applies migration 0015 without error — verified by running the T8 integration test later in the plan, but the schema/migration alone must not break existing `*.it.test.ts` runs today (spot-check with one existing `*.it.test.ts` file if Docker is available).
 
