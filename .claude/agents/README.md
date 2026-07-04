@@ -2,7 +2,7 @@
 
 This folder holds custom subagent definitions for Claude Code in this repo. Each `*.md` file is a self-contained agent: frontmatter (name, description, tools, model) plus a system prompt.
 
-This README documents **why** three of the agents — `researcher`, `planner`, `implementer` — are shaped the way they are, and links the practices they encode back to primary sources. It is design documentation, not a usage tutorial.
+This README documents **why** the custom agents in this folder — `researcher`, `planner`, `implementer`, `test-writer`, `architecture-reviewer`, `plan-verifier`, `doc-writer` — are shaped the way they are, and links the practices they encode back to primary sources. It is design documentation, not a usage tutorial.
 
 ## Agents in this folder
 
@@ -12,6 +12,10 @@ This README documents **why** three of the agents — `researcher`, `planner`, `
 | `researcher` | `sonnet` | read-only | Finds information in the codebase or on the public web and returns structured, cited findings. Interview-mode for vague prompts. Does not invoke `deep-research`. |
 | `planner` | `sonnet` | read-only | Produces a **Development Plan** — a parseable, task-graph document that names files, skills, and verification commands. The plan is the contract consumed by `implementer`. |
 | `implementer` | `sonnet` | read + write within task scope | Executes **one** task from a Development Plan. Runs the self-check loop (typecheck → tests → lint) up to 3 iterations. Does not commit, does not review architecturally. Designed for parallel dispatch on disjoint tasks. |
+| `test-writer` | `sonnet` | read + write, scoped to test files | Writes and iterates tests (unit / component / integration) one-at-a-time with a TDD-checkpoint loop. Uses `fastify.inject()` for backend routes, RTL for UI. Refuses to weaken assertions to make tests pass; refuses to mock the unit under test. Invoked only on explicit request. |
+| `architecture-reviewer` | `sonnet` | read-only | Reviews an uncommitted diff (or an explicit range) against onion/UI architecture rules and contract discipline. MUST/SHOULD findings with `file:line` + verbatim excerpt + `Fix:`. Complements — does not replace — `api-contract-reviewer`. |
+| `plan-verifier` | `sonnet` | read-only (runs tests, no code edits) | Verifies task-by-task that a Development Plan actually landed in the diff. Per-task verdict `met` / `partial` / `unmet` with cited evidence. Re-derives every verdict — never trusts an implementer's self-report. Novel pattern with no external precedent. |
+| `doc-writer` | `sonnet` | read + write, scoped to documentation files | Writes docs in three modes: reverse-engineer from code, plan → spec, or notes → doc. Classifies every doc per Diátaxis, verifies every reference before finalizing (anti-staleness), refuses to write slop that would just restate well-typed code. Never edits `INSIGHTS.md`/`LEARNINGS.md`. |
 
 ## Intended workflow
 
@@ -88,6 +92,14 @@ Every research and reporting template in this folder has an explicit `Gaps` sect
 
 Encoded in: `researcher.md` — both output templates (`Gaps / not found`, `Confidence`, source `status:` tags).
 
+### 9. Verification by re-derivation, not self-report
+When one agent's job is to check another agent's work, agreement bias creeps in — the checker tends to accept the earlier claim rather than test it. The counter is to grade each dimension independently with an isolated judge, and to make the judge re-derive its verdict from primary evidence (the diff, a test run) rather than from the prior agent's self-reported status. MT-Bench (Zheng et al., NeurIPS 2023) documents the bias; Anthropic's evals-engineering post is the shortest actionable prescription.
+
+- Anthropic Engineering — Demystifying evals for AI agents. https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+- Zheng et al. — Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena (NeurIPS 2023). https://arxiv.org/abs/2306.05685
+
+Encoded in: `plan-verifier.md` (re-derive verdicts from the diff, ignore any `Implementer report` status field; per-dimension `met`/`partial`/`unmet` rather than one holistic verdict) and `architecture-reviewer.md` (independent grader per applicable skill, no holistic "looks fine" pass).
+
 ## Project-specific constraints encoded
 
 These are DevDigest-specific facts that shape the agents:
@@ -110,3 +122,4 @@ These are DevDigest-specific facts that shape the agents:
 ## Change log
 
 - 2026-07-04 — Initial version. Documents `researcher`, `planner`, `implementer` as designed on branch `l03`.
+- 2026-07-04 — Second batch on branch `l03`. Added `test-writer`, `architecture-reviewer`, `plan-verifier`, `doc-writer`. Introduced principle §9 (verification by re-derivation, not self-report — encoded in `plan-verifier` and `architecture-reviewer`). `architecture-reviewer` deliberately kept separate from the pre-existing `api-contract-reviewer` — one is broad (onion/UI + contracts conditionally), the other is contract-only and adversarial. `test-writer` and `doc-writer` write-scoping is prompt-enforced (per §5) since Claude Code has no glob-scoped Edit/Write allowlist. Sources for the new agents: Anthropic "How Anthropic teams use Claude Code" and "Effective context engineering for AI agents" (test-writer TDD-checkpoint + JIT context); Kent C. Dodds' Testing Trophy (test-writer classification bias); Fastify Testing guide + Martin Fowler "Mocks Aren't Stubs" (mocking policy); Anthropic `/code-review` command + Code Review docs "verification bar" (architecture-reviewer scope + citation discipline); Anthropic "Demystifying evals for AI agents" + MT-Bench (§9 anti-sycophancy); Diátaxis (doc-writer classification); Mintlify "AI can write your docs, but should it?" + Eric Holscher "'My Code is Self-Documenting'" (doc-writer anti-slop); softaworks/agent-toolkit c4-architecture skill heuristic (doc-writer diagram-type selection). Full source list embedded in each agent's `.md`.
