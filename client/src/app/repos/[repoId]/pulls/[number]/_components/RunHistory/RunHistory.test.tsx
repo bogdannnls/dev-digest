@@ -5,9 +5,9 @@
  * and shows the review score ring.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { RunSummary, PrCommit } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import { RunHistory } from "./RunHistory";
 
@@ -34,10 +34,19 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function commit(o: Partial<PrCommit> & { sha: string }): PrCommit {
+  return {
+    message: `msg for ${o.sha}`,
+    author: "Alice",
+    committed_at: "2026-06-11T18:00:00.000Z",
+    ...o,
+  };
+}
+
+function renderRuns(runs: RunSummary[], commits: PrCommit[] = []) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+      <RunHistory runs={runs} commits={commits} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
 }
@@ -71,5 +80,58 @@ describe("RunHistory — outcome badge", () => {
   it("a running run reads 'running'", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — commits are collapsed into one section", () => {
+  it("renders a single group header (default collapsed) — individual commit shas are hidden", () => {
+    renderRuns(
+      [],
+      [
+        commit({ sha: "aaaaaaa1111111", message: "first fix", committed_at: "2026-06-11T10:00:00.000Z" }),
+        commit({ sha: "bbbbbbb2222222", message: "second fix", committed_at: "2026-06-11T11:00:00.000Z" }),
+        commit({ sha: "ccccccc3333333", message: "third fix", committed_at: "2026-06-11T12:00:00.000Z" }),
+      ],
+    );
+
+    // Header shows the count and the LATEST commit's short sha + message (12:00 > 11:00 > 10:00).
+    expect(screen.getByText(/3 commits/)).toBeInTheDocument();
+    expect(screen.getByText("ccccccc")).toBeInTheDocument();
+    expect(screen.getByText("third fix")).toBeInTheDocument();
+
+    // Older commits are NOT visible while collapsed.
+    expect(screen.queryByText("aaaaaaa")).not.toBeInTheDocument();
+    expect(screen.queryByText("bbbbbbb")).not.toBeInTheDocument();
+    expect(screen.queryByText("first fix")).not.toBeInTheDocument();
+    expect(screen.queryByText("second fix")).not.toBeInTheDocument();
+  });
+
+  it("expands to reveal every commit when the header is clicked", () => {
+    renderRuns(
+      [],
+      [
+        commit({ sha: "aaaaaaa1111111", message: "first fix", committed_at: "2026-06-11T10:00:00.000Z" }),
+        commit({ sha: "bbbbbbb2222222", message: "second fix", committed_at: "2026-06-11T11:00:00.000Z" }),
+      ],
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /toggle commits list/i }));
+
+    // Older commit is only visible once expanded.
+    expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
+    expect(screen.getByText("first fix")).toBeInTheDocument();
+    // Latest commit appears twice: once in the header, once in the expanded list.
+    expect(screen.getAllByText("bbbbbbb")).toHaveLength(2);
+    expect(screen.getAllByText("second fix")).toHaveLength(2);
+  });
+
+  it("uses ICU 'one' plural for a single commit", () => {
+    renderRuns([], [commit({ sha: "aaaaaaa1111111", message: "solo" })]);
+    expect(screen.getByText(/^1 commit$/)).toBeInTheDocument();
+  });
+
+  it("renders nothing when both runs and commits are empty", () => {
+    const { container } = renderRuns([], []);
+    expect(container).toBeEmptyDOMElement();
   });
 });

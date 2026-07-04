@@ -73,15 +73,125 @@ const commitRowStyle: React.CSSProperties = {
   background: "transparent",
 };
 
+// Collapsible group header — one row summarising N commits, positioned in the
+// timeline at the newest commit's timestamp. Uses a solid (not dashed) border
+// so it reads as an actionable summary rather than an inline separator.
+const commitsGroupHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  width: "100%",
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--bg-elevated)",
+  textAlign: "left",
+  cursor: "pointer",
+  font: "inherit",
+  color: "inherit",
+};
+
 type TimelineItem =
   | { kind: "run"; ts: number; run: RunSummary }
-  | { kind: "commit"; ts: number; commit: PrCommit };
+  | { kind: "commits"; ts: number; commits: PrCommit[] };
 
 /** Epoch ms for sorting; unparseable / missing timestamps sort last. */
 function tsOf(s: string | null | undefined): number {
   if (!s) return 0;
   const n = Date.parse(s);
   return Number.isNaN(n) ? 0 : n;
+}
+
+function CommitRow({ commit }: { commit: PrCommit }) {
+  return (
+    <div style={commitRowStyle}>
+      <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+      <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
+        {commit.sha.slice(0, 7)}
+      </span>
+      <span
+        style={{
+          fontSize: 12.5,
+          color: "var(--text-secondary)",
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={commit.message}
+      >
+        {commit.message.split("\n")[0]}
+      </span>
+      <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{commit.author}</span>
+      {commit.committed_at && (
+        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+          {new Date(commit.committed_at).toLocaleTimeString()}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CommitsGroup({ commits }: { commits: PrCommit[] }) {
+  const t = useTranslations("prReview");
+  const [open, setOpen] = React.useState(false);
+  const latest = commits[0]!;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={t("timeline.commitsToggle")}
+        style={commitsGroupHeaderStyle}
+      >
+        <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", flexShrink: 0 }}>
+          {t("timeline.commitsCount", { count: commits.length })}
+        </span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
+          {latest.sha.slice(0, 7)}
+        </span>
+        <span
+          style={{
+            fontSize: 12.5,
+            color: "var(--text-secondary)",
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={latest.message}
+        >
+          {latest.message.split("\n")[0]}
+        </span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{latest.author}</span>
+        {latest.committed_at && (
+          <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
+            {new Date(latest.committed_at).toLocaleTimeString()}
+          </span>
+        )}
+        <Icon.ChevronDown
+          size={15}
+          style={{
+            color: "var(--text-muted)",
+            transition: "transform 0.15s",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingLeft: 16 }}>
+          {commits.map((c) => (
+            <CommitRow key={c.sha} commit={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function RunHistory({
@@ -102,48 +212,32 @@ export function RunHistory({
   const t = useTranslations("prReview");
   if (runs.length === 0 && commits.length === 0) return null;
 
+  // Commits collapse into a SINGLE timeline entry positioned at the newest
+  // commit's timestamp — so the group sorts against runs by time, but the user
+  // sees one row (expandable) instead of one row per commit.
+  const sortedCommits =
+    commits.length > 0
+      ? [...commits].sort((a, b) => tsOf(b.committed_at) - tsOf(a.committed_at))
+      : [];
+
   const items: TimelineItem[] = [
     ...runs.map((run) => ({ kind: "run" as const, ts: tsOf(run.ran_at), run })),
-    ...commits.map((commit) => ({
-      kind: "commit" as const,
-      ts: tsOf(commit.committed_at),
-      commit,
-    })),
+    ...(sortedCommits.length > 0
+      ? [
+          {
+            kind: "commits" as const,
+            ts: tsOf(sortedCommits[0]!.committed_at),
+            commits: sortedCommits,
+          },
+        ]
+      : []),
   ].sort((a, b) => b.ts - a.ts);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {items.map((item) => {
-        if (item.kind === "commit") {
-          const c = item.commit;
-          return (
-            <div key={`commit:${c.sha}`} style={commitRowStyle}>
-              <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
-                {c.sha.slice(0, 7)}
-              </span>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  color: "var(--text-secondary)",
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={c.message}
-              >
-                {c.message.split("\n")[0]}
-              </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{c.author}</span>
-              {c.committed_at && (
-                <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-                  {new Date(c.committed_at).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
-          );
+        if (item.kind === "commits") {
+          return <CommitsGroup key="commits-group" commits={item.commits} />;
         }
 
         const r = item.run;
