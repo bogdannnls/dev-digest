@@ -40,6 +40,9 @@ export function GroupHeader({ role, fileCount, findingCount, collapsed, onToggle
         cursor: "pointer",
         font: "inherit",
         textAlign: "left",
+        position: "sticky",
+        top: 0,
+        zIndex: 2,
       }}
     >
       <Icon.ChevronRight

@@ -82,7 +82,16 @@ function DiffGroupSection({
         onToggle={onToggle}
       />
       {!collapsed && (
-        <>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            borderLeft: "2px solid var(--border)",
+            paddingLeft: 12,
+            marginLeft: 4,
+          }}
+        >
           {filesWithFindings.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {filesWithFindings.map((sf) => {
@@ -108,7 +117,7 @@ function DiffGroupSection({
             </div>
           )}
           <DiffViewer files={groupPrFiles} commenting={commenting} />
-        </>
+        </div>
       )}
     </div>
   );
