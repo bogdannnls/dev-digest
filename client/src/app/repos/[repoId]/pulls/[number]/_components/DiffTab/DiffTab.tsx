@@ -1,13 +1,13 @@
 "use client";
 
 import React from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SectionLabel, Button, Badge } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
 import { useSmartDiff } from "@/lib/hooks/smart-diff";
 import { notify } from "@/lib/toast";
 import { GroupHeader } from "./GroupHeader";
+import { FindingDetailDrawer } from "../FindingDetailDrawer";
 import type { FindingRecord, PrFile, Severity, SmartDiffFile, SmartDiffRole } from "@devdigest/shared";
 
 interface DiffTabProps {
@@ -17,7 +17,13 @@ interface DiffTabProps {
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
   allFindings: FindingRecord[];
+  /** owner/repo + head sha — used by the finding drawer to deep-link to GitHub. */
+  repoFullName?: string | null;
+  headSha?: string | null;
 }
+
+/** In-diff focus target — bumping nonce re-triggers scroll for repeat clicks. */
+export type DiffFocusLine = { path: string; line: number; nonce: number };
 
 function basenameOf(path: string): string {
   const idx = path.lastIndexOf("/");
@@ -41,18 +47,24 @@ function DiffGroupSection({
   collapsed,
   groupPrFiles,
   groupFindings,
+  focusLine,
   commenting,
   onToggle,
-  onFindingClick,
+  onChipClick,
+  onLineBadgeClick,
 }: {
   group: { role: SmartDiffRole; files: SmartDiffFile[] };
   collapsed: boolean;
   groupPrFiles: PrFile[];
   /** Findings whose file belongs to this group, sorted by file+start_line. */
   groupFindings: FindingRecord[];
+  focusLine: DiffFocusLine | null;
   commenting: DiffCommentApi;
   onToggle: () => void;
-  onFindingClick: (findingId: string) => void;
+  /** Header chip click → scroll to that finding's line in the diff. */
+  onChipClick: (finding: FindingRecord) => void;
+  /** Inline line badge click → open the drawer for that finding. */
+  onLineBadgeClick: (findingId: string) => void;
 }) {
   const findingCount = groupFindings.length;
 
@@ -82,9 +94,9 @@ function DiffGroupSection({
                 <button
                   key={f.id}
                   type="button"
-                  onClick={() => onFindingClick(f.id)}
+                  onClick={() => onChipClick(f)}
                   title={f.title}
-                  aria-label={`Open finding ${f.title} at ${f.file}:${f.start_line}`}
+                  aria-label={`Scroll to ${f.file}:${f.start_line}`}
                   style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}
                 >
                   <Badge
@@ -98,18 +110,28 @@ function DiffGroupSection({
               ))}
             </div>
           )}
-          <DiffViewer files={groupPrFiles} commenting={commenting} />
+          <DiffViewer
+            files={groupPrFiles}
+            commenting={commenting}
+            findings={groupFindings}
+            focusLine={focusLine}
+            onFindingClick={onLineBadgeClick}
+          />
         </div>
       )}
     </div>
   );
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, allFindings }: DiffTabProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const params = useParams<{ repoId: string; number: string }>();
-
+export function DiffTab({
+  prId,
+  filesCount,
+  files,
+  canComment,
+  allFindings,
+  repoFullName,
+  headSha,
+}: DiffTabProps) {
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
@@ -138,16 +160,21 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
     return map;
   }, [allFindings]);
 
-  // Badge click → soft-navigate to Findings tab focused on this finding.
-  // router.replace keeps the entry out of history (no "back" back into diff-with-focus).
-  const handleFindingClick = React.useCallback(
-    (findingId: string) => {
-      const sp = new URLSearchParams(searchParams.toString());
-      sp.set("tab", "findings");
-      sp.set("findingId", findingId);
-      router.replace(`/repos/${params.repoId}/pulls/${params.number}?${sp.toString()}`);
-    },
-    [router, searchParams, params.repoId, params.number],
+  // Header chip → scroll to that finding's line inside the diff. The nonce
+  // re-triggers scroll for a repeat click on the same chip (same {path,line}
+  // otherwise wouldn't re-fire the effect in FileCard).
+  const [focusLine, setFocusLine] = React.useState<DiffFocusLine | null>(null);
+  const handleChipClick = React.useCallback((f: FindingRecord) => {
+    setFocusLine((prev) => ({ path: f.file, line: f.start_line, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  // Inline line badge → open the finding drawer. State is DiffTab-local (no URL
+  // param yet) — matches the ephemeral nature of "look at this finding" UX and
+  // avoids a URL-driven remount storm on rapid clicks between findings.
+  const [openFindingId, setOpenFindingId] = React.useState<string | null>(null);
+  const openFinding = React.useMemo(
+    () => (openFindingId ? allFindings.find((f) => f.id === openFindingId) ?? null : null),
+    [openFindingId, allFindings],
   );
 
   const commentCount = comments?.length ?? 0;
@@ -199,7 +226,13 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
       </SectionLabel>
 
       {useFlatView ? (
-        <DiffViewer files={files} commenting={commenting} />
+        <DiffViewer
+          files={files}
+          commenting={commenting}
+          findings={allFindings}
+          focusLine={focusLine}
+          onFindingClick={setOpenFindingId}
+        />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {smartDiff.split_suggestion.too_big && (
@@ -234,13 +267,25 @@ export function DiffTab({ prId, filesCount, files, canComment, allFindings }: Di
                   collapsed={collapsed[group.role]}
                   groupPrFiles={groupPrFiles}
                   groupFindings={groupFindings}
+                  focusLine={focusLine}
                   commenting={commenting}
                   onToggle={() => setCollapsed((prev) => ({ ...prev, [group.role]: !prev[group.role] }))}
-                  onFindingClick={handleFindingClick}
+                  onChipClick={handleChipClick}
+                  onLineBadgeClick={setOpenFindingId}
                 />
               );
             })}
         </div>
+      )}
+
+      {openFinding && prId && (
+        <FindingDetailDrawer
+          finding={openFinding}
+          prId={prId}
+          repoFullName={repoFullName}
+          headSha={headSha}
+          onClose={() => setOpenFindingId(null)}
+        />
       )}
     </section>
   );

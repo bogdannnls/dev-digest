@@ -18,7 +18,6 @@ export function FindingsPanel({
   repoFullName,
   headSha,
   severityFilter,
-  focusFindingId = null,
 }: {
   findings: FindingRecord[];
   prId: string;
@@ -26,9 +25,6 @@ export function FindingsPanel({
   headSha?: string | null;
   /** When set, only findings with this severity are shown (driven by ?severity= URL param). */
   severityFilter?: "CRITICAL" | "WARNING" | "SUGGESTION" | null;
-  /** When set, the matching card auto-expands + scrolls into view. Driven by
-   *  ?findingId= on Smart Diff badge clicks. */
-  focusFindingId?: string | null;
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
@@ -74,8 +70,7 @@ export function FindingsPanel({
               key={f.id}
               f={f}
               focused={i === focusIdx}
-              defaultExpanded={focusFindingId ? f.id === focusFindingId : i === 0}
-              focusFindingId={focusFindingId}
+              defaultExpanded={i === 0}
               pending={action.isPending}
               repoFullName={repoFullName}
               headSha={headSha}

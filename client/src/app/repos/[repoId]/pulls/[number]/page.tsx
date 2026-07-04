@@ -168,6 +168,8 @@ export default function PRDetailPage() {
             files={pr.files}
             canComment={pr.status === "open"}
             allFindings={allFindings}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
           />
         )}
       </div>

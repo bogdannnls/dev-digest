@@ -5,6 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
+import type { FindingRecord } from "@devdigest/shared";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
 import { parsePatch, type Line } from "../helpers";
@@ -30,12 +31,50 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  findings,
+  focusLine,
+  onFindingClick,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  /** Findings anchored to this file — used to render inline severity badges. */
+  findings?: FindingRecord[];
+  /** When set (matched by path) the card force-opens and scrolls to the line. */
+  focusLine?: { path: string; line: number; nonce: number } | null;
+  onFindingClick?: (findingId: string) => void;
+}) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  // Map new-line number → first matching finding, for inline badges. `start_line`
+  // is the new-side line (post-change). Uses `newNo` since diff-viewer keys.
+  const findingByNewLine = React.useMemo(() => {
+    const map = new Map<number, FindingRecord>();
+    for (const f of findings ?? []) {
+      if (!map.has(f.start_line)) map.set(f.start_line, f);
+    }
+    return map;
+  }, [findings]);
+
+  // Focus-driven scroll: when focusLine.nonce changes (parent bumped it), open
+  // this card if closed, then scroll to the CodeLine whose newNo matches. Refs
+  // are collected below as each line renders.
+  const lineRefs = React.useRef(new Map<number, HTMLDivElement>());
+  React.useEffect(() => {
+    if (!focusLine) return;
+    setOpen(true);
+    // Wait one frame so the just-opened body is in the DOM before scrolling.
+    const rafId = requestAnimationFrame(() => {
+      lineRefs.current.get(focusLine.line)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [focusLine?.nonce, focusLine?.line]);
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -78,15 +117,25 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
           {lines.length === 0 ? (
             <div style={s.noDiff}>{t("diffViewer.noDiffText")}</div>
           ) : (
-            lines.map((ln, i) => (
-              <CodeLine
-                key={i}
-                ln={ln}
-                path={file.path}
-                threads={threadsForLine(ln, matched)}
-                commenting={commenting}
-              />
-            ))
+            lines.map((ln, i) => {
+              const finding = ln.newNo != null ? findingByNewLine.get(ln.newNo) ?? null : null;
+              return (
+                <CodeLine
+                  key={i}
+                  ln={ln}
+                  path={file.path}
+                  threads={threadsForLine(ln, matched)}
+                  commenting={commenting}
+                  finding={finding}
+                  onFindingClick={onFindingClick}
+                  registerRef={(el) => {
+                    if (ln.newNo == null) return;
+                    if (el) lineRefs.current.set(ln.newNo, el);
+                    else lineRefs.current.delete(ln.newNo);
+                  }}
+                />
+              );
+            })
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
         </div>
