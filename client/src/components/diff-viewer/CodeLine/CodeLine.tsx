@@ -1,8 +1,12 @@
 /* CodeLine — one rendered diff line: gutter number, +/- sign, text, plus the
-   hover "+" affordance, any anchored comment threads, and an inline composer. */
+   hover "+" affordance, any anchored comment threads, and an inline composer.
+   When a finding is anchored to this line, an inline severity dot is shown at
+   the end of the row; clicking it opens the finding drawer. */
 "use client";
 
 import React from "react";
+import { SeverityBadge } from "@devdigest/ui";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 import { commentTargetFor, type CommentThread, type DiffCommentApi, cs } from "../comments";
 import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor } from "../styles";
@@ -14,11 +18,19 @@ export function CodeLine({
   path,
   threads,
   commenting,
+  finding,
+  onFindingClick,
+  registerRef,
 }: {
   ln: Line;
   path: string;
   threads: CommentThread[];
   commenting?: DiffCommentApi;
+  /** When set, this line has an anchored finding — renders an inline badge. */
+  finding?: FindingRecord | null;
+  onFindingClick?: (findingId: string) => void;
+  /** Ref callback keyed by the parent so it can scrollIntoView on demand. */
+  registerRef?: (el: HTMLDivElement | null) => void;
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
@@ -37,6 +49,7 @@ export function CodeLine({
 
   return (
     <div
+      ref={registerRef}
       style={cs.rowWrap}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -62,6 +75,25 @@ export function CodeLine({
         <span className="mono" style={s.lineText}>
           {ln.text || " "}
         </span>
+        {finding && (
+          <button
+            type="button"
+            onClick={() => onFindingClick?.(finding.id)}
+            title={finding.title}
+            aria-label={`Open finding: ${finding.title}`}
+            style={{
+              marginLeft: 8,
+              border: "none",
+              background: "none",
+              padding: 0,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignSelf: "center",
+            }}
+          >
+            <SeverityBadge severity={finding.severity as Severity} compact />
+          </button>
+        )}
       </div>
 
       {commenting &&

@@ -39,3 +39,15 @@ export class ConfigError extends AppError {
     super('config_error', message, 500, details);
   }
 }
+
+/**
+ * Thrown by in-memory server-side rate limiters (e.g. `IntentService`'s
+ * per-workspace/per-PR compute limits). Not backed by `@fastify/rate-limit` —
+ * see `IntentService` docstring for why. `statusCode: 429` flows through the
+ * app's existing `AppError` → HTTP mapping with no route-level special-casing.
+ */
+export class RateLimitedError extends AppError {
+  constructor(message: string, details?: { retryAfterSeconds?: number }) {
+    super('rate_limited', message, 429, details);
+  }
+}

@@ -97,6 +97,14 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     return service.activeRuns(workspaceId, req.params.id);
   });
 
+  // ---- Active (in-flight) runs across the workspace ------------------------
+  // Powers the global bottom-right ActiveRunsStack. Includes the repo/PR
+  // coordinates so the client can link back without a follow-up fetch.
+  app.get('/runs/active', async (req) => {
+    const { workspaceId } = await getContext(container, req);
+    return service.activeRunsGlobal(workspaceId);
+  });
+
   // ---- All runs for a PR (any status; the run history, incl. failures) -----
   app.get('/pulls/:id/runs', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(container, req);

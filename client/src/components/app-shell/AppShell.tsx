@@ -6,6 +6,7 @@
 import React from "react";
 import { AppFrame, CommandPalette, ShortcutsHelp, type Crumb } from "@devdigest/ui";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
+import { ActiveRunsStack } from "../active-runs-stack";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -26,6 +27,7 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
       </AppFrame>
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
+      <ActiveRunsStack />
     </>
   );
 }

@@ -265,15 +265,14 @@ export class AgentsService {
   }
 
   /**
-   * Dynamic model list from the provider adapter's /models. Degrades gracefully
-   * to [] if the provider key is not configured (the editor still renders).
+   * Dynamic model list from the provider adapter's /models. Throws when the
+   * provider isn't configured or the upstream call fails; the route layer is
+   * responsible for logging and degrading to [] so the editor still renders.
+   * (Silent-catch here previously hid a real SDK Gunzip failure — see
+   * server/INSIGHTS.md 2026-07-04.)
    */
   async listModels(provider: Provider): Promise<ModelInfo[]> {
-    try {
-      const llm = await this.container.llm(provider);
-      return await llm.listModels();
-    } catch {
-      return [];
-    }
+    const llm = await this.container.llm(provider);
+    return llm.listModels();
   }
 }

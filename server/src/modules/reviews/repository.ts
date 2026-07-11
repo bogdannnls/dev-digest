@@ -1,6 +1,6 @@
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
+import type { Finding, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
@@ -77,6 +77,12 @@ export class ReviewRepository {
     return runRepo.activeRunsForPull(this.db, workspaceId, prId);
   }
 
+  /** All in-flight runs in the workspace, joined with repo + PR coordinates.
+   *  Powers the global bottom-right ActiveRunsStack. */
+  activeRuns(workspaceId: string): Promise<runRepo.ActiveRunGlobal[]> {
+    return runRepo.activeRuns(this.db, workspaceId);
+  }
+
   /** All runs for a PR (any status), newest first — the PR run history. */
   listRunsForPull(workspaceId: string, prId: string): Promise<RunSummary[]> {
     return runRepo.listRunsForPull(this.db, workspaceId, prId);
@@ -123,16 +129,6 @@ export class ReviewRepository {
 
   setFindingDismissed(findingId: string, at: Date | null): Promise<FindingRow | undefined> {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
-  }
-
-  // ---- intent -------------------------------------------------------------
-
-  upsertIntent(prId: string, intent: Intent): Promise<void> {
-    return pullRepo.upsertIntent(this.db, prId, intent);
-  }
-
-  getIntent(prId: string): Promise<Intent | undefined> {
-    return pullRepo.getIntent(this.db, prId);
   }
 
   // ---- observability: agent_runs + run_traces ----------------------------

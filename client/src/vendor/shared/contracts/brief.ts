@@ -120,3 +120,73 @@ export const PrBrief = z.object({
   history: PrHistory,
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+// ---- Intent Layer (pr_intent overview card, see docs/superpowers/specs/2026-07-04-intent-layer-design.md §7) ----
+// NOTE: do NOT mutate the `Intent` schema above — it is already shipped to the reviewer pipeline.
+export const RiskAreaIcon = z.enum(['shield', 'package', 'zap', 'database', 'globe']);
+export type RiskAreaIcon = z.infer<typeof RiskAreaIcon>;
+
+// All 4 kinds are declared now even though P1 only populates `github_issue`,
+// so P2 (jira/linear) and P3 (url) need no contract migration.
+export const IntentReferenceKind = z.enum(['github_issue', 'jira', 'linear', 'url']);
+export type IntentReferenceKind = z.infer<typeof IntentReferenceKind>;
+
+// All 8 statuses are declared now for the same reason; P1 only ever emits
+// 'ok' | 'not_found' | 'unreachable' | 'timeout' from the GitHub collector.
+export const IntentReferenceStatus = z.enum([
+  'ok',
+  'not_allowlisted',
+  'no_auth',
+  'unreachable',
+  'timeout',
+  'too_large',
+  'not_found',
+  'parse_error',
+]);
+export type IntentReferenceStatus = z.infer<typeof IntentReferenceStatus>;
+
+export const IntentReferenceDto = z.object({
+  kind: IntentReferenceKind,
+  id: z.string(),
+  status: IntentReferenceStatus,
+  bodyChars: z.number().int().nonnegative(),
+});
+export type IntentReferenceDto = z.infer<typeof IntentReferenceDto>;
+
+export const PrIntentDto = z.object({
+  goal: z.string().min(1),
+  inScope: z.array(z.string()).max(20),
+  outOfScope: z.array(z.string()).max(20),
+  riskAreas: z
+    .array(
+      z.object({
+        icon: RiskAreaIcon,
+        label: z.string().min(1).max(40),
+      }),
+    )
+    .max(3),
+  references: z.array(IntentReferenceDto).max(20),
+  model: z.string(),
+  cost: z.object({
+    tokensIn: z.number().int().nonnegative(),
+    tokensOut: z.number().int().nonnegative(),
+    usd: z.number().nonnegative(),
+  }),
+  computedAt: z.string(),
+});
+export type PrIntentDto = z.infer<typeof PrIntentDto>;
+
+export const PrIntentStaleReason = z.enum(['head_sha', 'body']);
+export type PrIntentStaleReason = z.infer<typeof PrIntentStaleReason>;
+
+export const PrIntentResponse = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ready'), data: PrIntentDto }),
+  z.object({
+    status: z.literal('ready-stale'),
+    data: PrIntentDto,
+    staleReasons: z.array(PrIntentStaleReason).min(1),
+  }),
+  z.object({ status: z.literal('computing'), runId: z.string() }),
+  z.object({ status: z.literal('error'), message: z.string() }),
+]);
+export type PrIntentResponse = z.infer<typeof PrIntentResponse>;

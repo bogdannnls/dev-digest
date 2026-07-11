@@ -126,7 +126,56 @@ export class OctokitGitHubClient implements ForgeClient {
     );
   }
 
-  /** linked issue via regex on PR body (#123 / closes #123). */
+  /**
+   * All issues linked from a PR body: combines closing-keyword `#NN` refs,
+   * bare `#NN` refs (capped at 5), and full GitHub issue URLs (which may
+   * point to a different repo). Case-insensitive, deduplicated by number+url.
+   */
+  resolveLinkedIssues(body: string, repo: RepoRef): Array<{ number: number; url: string }> {
+    const results: Array<{ number: number; url: string }> = [];
+    const seen = new Set<string>();
+    const add = (number: number, owner: string, name: string): boolean => {
+      const url = `https://github.com/${owner}/${name}/issues/${number}`;
+      const key = `${owner}/${name}#${number}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      results.push({ number, url });
+      return true;
+    };
+
+    // Closing-keyword refs — not capped.
+    const closingRe = /(?:closes|closed|fixes|fixed|resolves|resolved)\s*#(\d+)/gi;
+    for (const m of body.matchAll(closingRe)) {
+      if (m[1]) add(Number(m[1]), repo.owner, repo.name);
+    }
+
+    // Bare `#NN` refs — capped at 5 *newly discovered* refs (a bare mention
+    // that duplicates an already-captured closing-keyword ref doesn't consume
+    // a cap slot, since it wouldn't add a new reference anyway).
+    const bareRe = /(?<!\w)#(\d+)/g;
+    let bareCount = 0;
+    for (const m of body.matchAll(bareRe)) {
+      if (bareCount >= 5) break;
+      if (m[1] && add(Number(m[1]), repo.owner, repo.name)) {
+        bareCount += 1;
+      }
+    }
+
+    // Full GitHub issue URLs — may point to a different repo.
+    const urlRe = /https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/issues\/(\d+)/gi;
+    for (const m of body.matchAll(urlRe)) {
+      if (m[1] && m[2] && m[3]) add(Number(m[3]), m[1], m[2]);
+    }
+
+    return results;
+  }
+
+  /**
+   * Linked issue via regex on PR body (#123 / closes #123) — used to populate
+   * `PrDetail.linked_issue`. Kept as its original first-#NN-in-document-order
+   * match (independent of `resolveLinkedIssues`' keyword-bucket ordering) so
+   * this call site's behavior is unchanged by the P1 intent-layer work.
+   */
   private async resolveLinkedIssue(repo: RepoRef, body: string): Promise<IssueMeta | undefined> {
     const m = body.match(/(?:closes|fixes|resolves)?\s*#(\d+)/i);
     if (!m?.[1]) return undefined;

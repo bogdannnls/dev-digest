@@ -23,6 +23,16 @@ export interface ActiveRun {
   ran_at: string | null;
 }
 
+/** Same as ActiveRun plus repo/PR coordinates so a caller can link back to the
+ *  PR page without another fetch. Returned by GET /runs/active. */
+export interface ActiveRunGlobal extends ActiveRun {
+  pr_id: string;
+  pr_number: number;
+  repo_id: string;
+  repo_owner: string;
+  repo_name: string;
+}
+
 /** In-flight runs for a PR, from the server (agent_runs where status='running').
    Survives reloads/devices; polls while anything is running so it self-clears. */
 export function usePrActiveRuns(prId: string | null | undefined) {
@@ -31,6 +41,20 @@ export function usePrActiveRuns(prId: string | null | undefined) {
     queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
     enabled: !!prId,
     refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+  });
+}
+
+/** All in-flight runs in the workspace. Powers the global ActiveRunsStack.
+ *  Poll cadence matches usePrActiveRuns: 4s while any run is active, stops on
+ *  empty — no traffic while idle. Cross-tab discovery relies on
+ *  refetchOnWindowFocus so a run started in another tab appears on refocus,
+ *  not on a background timer that burns network for nothing. */
+export function useActiveRuns() {
+  return useQuery({
+    queryKey: ["active-runs"],
+    queryFn: () => api.get<ActiveRunGlobal[]>(`/runs/active`),
+    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -72,8 +96,12 @@ export function useDeleteRun(prId: string | null | undefined) {
 
 /** Request cancellation of an in-flight run (takes effect at the next step). */
 export function useCancelRun() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.post<{ ok: boolean }>(`/runs/${runId}/cancel`),
+    // A cancelled run stops being active — kick the global indicator to re-poll
+    // instead of leaving a stale card on-screen until the next natural refresh.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["active-runs"] }),
   });
 }
 
@@ -131,6 +159,14 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      // Nudge the run-status caches so the newly-queued run appears immediately:
+      //  - per-PR active list (the PR page's RunStatus / timeline)
+      //  - global active list (the bottom-right ActiveRunsStack)
+      // Without these the empty caches stay `[]` and their refetchInterval
+      // stays `false` — no polling would kick in until window focus.
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["active-runs"] });
     },
   });
 }

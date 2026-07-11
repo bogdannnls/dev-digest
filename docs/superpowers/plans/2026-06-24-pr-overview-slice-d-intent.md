@@ -1,5 +1,7 @@
 # PR Overview — Slice D (Intent) — Implementation Plan
 
+> **⚠ SUPERSEDED (2026-07-04):** This plan is superseded by [`docs/superpowers/specs/2026-07-04-intent-layer-design.md`](../specs/2026-07-04-intent-layer-design.md). The new spec extends this design with reference collection (linked issues, tracker tickets, allow-listed URLs), a `ready-stale` response state, a per-source reference-chip surface, and an SSRF/prompt-injection security posture. **Do not execute this plan.** Its content is retained for design context only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL — use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan task-by-task. Steps use `- [ ]` checkboxes.
 
 **Goal:** Ship the Intent block of the new PR Overview tab. Given a PR, derive a single-sentence restated goal, in-scope / out-of-scope bullet lists, and 1–3 risk-area chips via a structured LLM call, cache the result keyed by `(head_sha, body_hash)`, and render an `IntentCard` that handles the cold (`computing`) → warm (`ready`) lifecycle over SSE.

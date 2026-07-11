@@ -66,6 +66,11 @@ export class ReviewService {
     return this.repo.activeRunsForPull(workspaceId, prId);
   }
 
+  /** All in-flight runs in the workspace (no PR filter). */
+  async activeRunsGlobal(workspaceId: string) {
+    return this.repo.activeRuns(workspaceId);
+  }
+
   /** All runs for a PR (any status), newest first — the run history (incl. failures). */
   async listRuns(workspaceId: string, prId: string) {
     return this.repo.listRunsForPull(workspaceId, prId);

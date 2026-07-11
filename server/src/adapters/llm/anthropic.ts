@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import PQueue from 'p-queue';
 import type {
   LLMProvider,
   ModelInfo,
@@ -8,13 +9,37 @@ import type {
   StructuredResult,
   ChatMessage,
 } from '@devdigest/shared';
-import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { withRetry, withIdleTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 
-const DEFAULT_TIMEOUT = 60_000;
+/**
+ * Idle-timeout on the stream (not total wall-clock). If Anthropic sends no bytes
+ * for this long the request is treated as hung and aborted. Total generation
+ * time is unbounded — a long-but-progressing stream never trips this.
+ *
+ * Note: this doubles as a TTFB ceiling. The SDK's async iterator yields only
+ * when the wire has bytes, so the timer counts against time-to-first-token as
+ * well as mid-stream stalls. Opus 4.x with extended thinking on a skills-heavy
+ * prompt regularly emits its first token 60-120s after `.stream()`, so 180s
+ * is the floor that keeps legitimate slow-thinking requests alive while still
+ * catching a genuinely hung connection.
+ */
+const IDLE_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_TOKENS = 4096;
+
+/**
+ * Per-key concurrency ceiling. When N reviewers fire against the same Anthropic
+ * key, requests beyond this limit queue LOCALLY (before the HTTP call is made)
+ * instead of queuing at Anthropic's rate-limit gate — where a queued request
+ * holds an open connection with no bytes flowing, tripping withIdleTimeout as
+ * if the stream were hung. Serializing on our side keeps TTFB tight.
+ *
+ * Override with the ANTHROPIC_MAX_CONCURRENCY env var if a Tier-3+ key can push
+ * higher without queuing.
+ */
+const DEFAULT_CONCURRENCY = 3;
 
 /**
  * Claude 4.x+ models (Opus 4.x, Sonnet 4.x, Haiku 4.x) and the Fable family
@@ -51,9 +76,15 @@ function splitSystem(messages: ChatMessage[]): {
 export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic' as const;
   private client: Anthropic;
+  private queue: PQueue;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, opts: { concurrency?: number } = {}) {
     this.client = new Anthropic({ apiKey });
+    const envN = Number(process.env.ANTHROPIC_MAX_CONCURRENCY);
+    const concurrency =
+      opts.concurrency ??
+      (Number.isFinite(envN) && envN > 0 ? envN : DEFAULT_CONCURRENCY);
+    this.queue = new PQueue({ concurrency });
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -69,18 +100,33 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() => withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT));
+    // withRetry wraps the queue slot (not the other way around) so a 429/5xx
+    // backoff sleep doesn't hold a concurrency slot while it waits.
+    return withRetry(() => this.gated(() => this.doComplete(req)));
+  }
+
+  /** Serialize the HTTP-touching work onto the per-key queue. */
+  private gated<T>(fn: () => Promise<T>): Promise<T> {
+    return this.queue.add(fn) as Promise<T>;
   }
 
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
     const { system, rest } = splitSystem(req.messages);
-    const res = await this.client.messages.create({
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
+    const stream = this.client.messages.stream({
       model: req.model,
       system: system || undefined,
       messages: rest,
       max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
       ...(rejectsTemperature(req.model) ? {} : { temperature: req.temperature ?? 0.2 }),
     });
+    // Drain the SSE with an idle-timer that resets on every event. `finalMessage`
+    // below throws if the stream ended prematurely, so we don't need to handle
+    // partial state here.
+    for await (const _event of withIdleTimeout(stream, idleMs, () => stream.controller.abort())) {
+      // no-op: we only need the assembled Message from finalMessage()
+    }
+    const res = await stream.finalMessage();
     const text = res.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -106,10 +152,11 @@ export class AnthropicProvider implements LLMProvider {
     let tokensOut = 0;
     let lastRaw = '';
 
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       const res = await withRetry(() =>
-        withTimeout(
-          this.client.messages.create({
+        this.gated(async () => {
+          const stream = this.client.messages.stream({
             model: req.model,
             system: system || undefined,
             messages,
@@ -123,9 +170,17 @@ export class AnthropicProvider implements LLMProvider {
               },
             ],
             tool_choice: { type: 'tool', name: toolName },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
+          });
+          // Drain events under the idle-timer. `input_json_delta` chunks assemble
+          // into the tool's `input`; the SDK reconstructs the final ToolUseBlock
+          // for us — we only iterate to keep the stream alive.
+          for await (const _event of withIdleTimeout(stream, idleMs, () =>
+            stream.controller.abort(),
+          )) {
+            // no-op
+          }
+          return stream.finalMessage();
+        }),
       );
       tokensIn += res.usage.input_tokens;
       tokensOut += res.usage.output_tokens;

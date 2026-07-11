@@ -1,8 +1,35 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
+
+/**
+ * Row shape persisted in `pr_intent.references` (JSONB). Defined locally here
+ * rather than in a separate `intent/types.ts` module — this file is the only
+ * place that needs the shape until the intent module's repository (P1-T7)
+ * imports it. Mirrors spec §6.3.
+ */
+export type IntentReferenceRow = {
+  kind: 'github_issue' | 'jira' | 'linear' | 'url';
+  id: string;
+  status:
+    | 'ok'
+    | 'not_allowlisted'
+    | 'no_auth'
+    | 'unreachable'
+    | 'timeout'
+    | 'too_large'
+    | 'not_found'
+    | 'parse_error';
+  bodyHash: string | null;
+  bodyChars: number;
+  fetchedAt: string;
+  error: string | null;
+};
+
+/** Icon values for `pr_intent.risk_areas[].icon`. Mirrors the shared `RiskAreaIcon` contract enum. */
+export type RiskAreaIcon = 'shield' | 'package' | 'zap' | 'database' | 'globe';
 
 // ============================================================ Review & findings
 
@@ -52,6 +79,18 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  headSha: text('head_sha').notNull(),
+  bodyHash: text('body_hash').notNull(),
+  references: jsonb('references').$type<IntentReferenceRow[]>().notNull().default(sql`'[]'::jsonb`),
+  riskAreas: jsonb('risk_areas')
+    .$type<{ icon: RiskAreaIcon; label: string }[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  model: text('model'),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  costUsd: numeric('cost_usd', { precision: 10, scale: 6 }).notNull().default('0'),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const prBrief = pgTable('pr_brief', {

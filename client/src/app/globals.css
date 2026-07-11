@@ -4,6 +4,24 @@
    web fonts. */
 @import "../vendor/ui/styles.css";
 
+/* Per-block accent colors for the PR Overview tab. Additive to the vendor
+   palette; kept out of `vendor/ui/styles.css` (which is do-not-touch). Each
+   card in the Overview tab picks its own accent so the tab reads as a set
+   of coloured sections rather than a wall of neutral bordered boxes. */
+:root,
+[data-theme="dark"] {
+  --accent-intent: #8b5cf6;
+  --accent-intent-bg: rgba(139, 92, 246, 0.1);
+  --accent-brief: #14b8a6;
+  --accent-brief-bg: rgba(20, 184, 166, 0.1);
+}
+[data-theme="light"] {
+  --accent-intent: #7c3aed;
+  --accent-intent-bg: rgba(124, 58, 237, 0.08);
+  --accent-brief: #0d9488;
+  --accent-brief-bg: rgba(13, 148, 136, 0.08);
+}
+
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -20,5 +38,41 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ActiveRunsStack — global bottom-right indicator for in-flight agent runs. */
+@keyframes ddActiveRunIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes ddActiveRunOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+@keyframes ddActiveRunSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ddActiveRunPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
   }
 }

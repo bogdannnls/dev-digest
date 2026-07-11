@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import PQueue from 'p-queue';
 import type {
   LLMProvider,
   ModelInfo,
@@ -7,13 +8,34 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
-import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { withRetry, withIdleTimeout, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 
-const DEFAULT_TIMEOUT = 60_000;
+/**
+ * Idle-timeout on the stream (not total wall-clock). If OpenAI sends no chunks
+ * for this long the request is treated as hung and aborted. Total generation
+ * time is unbounded — a long-but-progressing stream never trips this.
+ *
+ * Note: this doubles as a TTFB ceiling. Reasoning models (o3, gpt-5) can spend
+ * 60+ seconds thinking before emitting the first token, so 180s is the floor.
+ * Kept in sync with the Anthropic adapter for symmetric behaviour.
+ */
+const IDLE_TIMEOUT_MS = 180_000;
+/** Total-timeout for the (non-streaming) embeddings endpoint. */
+const EMBED_TIMEOUT_MS = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
+
+/**
+ * Per-key concurrency ceiling. Same rationale as AnthropicProvider — serialize
+ * on our side so requests don't queue at OpenAI's rate-limit gate with an open
+ * connection and no bytes flowing (which would trip withIdleTimeout).
+ *
+ * OpenAI limits are usually higher than Anthropic's, so the default is more
+ * generous. Override with the OPENAI_MAX_CONCURRENCY env var.
+ */
+const DEFAULT_CONCURRENCY = 5;
 
 /**
  * GPT-5 and the o-series reasoning models reject a custom `temperature` (only
@@ -47,9 +69,20 @@ function tuningParams(
 export class OpenAIProvider implements LLMProvider {
   readonly id = 'openai' as const;
   private client: OpenAI;
+  private queue: PQueue;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, opts: { concurrency?: number } = {}) {
     this.client = new OpenAI({ apiKey });
+    const envN = Number(process.env.OPENAI_MAX_CONCURRENCY);
+    const concurrency =
+      opts.concurrency ??
+      (Number.isFinite(envN) && envN > 0 ? envN : DEFAULT_CONCURRENCY);
+    this.queue = new PQueue({ concurrency });
+  }
+
+  /** Serialize the HTTP-touching work onto the per-key queue. */
+  private gated<T>(fn: () => Promise<T>): Promise<T> {
+    return this.queue.add(fn) as Promise<T>;
   }
 
   async listModels(): Promise<ModelInfo[]> {
@@ -62,17 +95,22 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() =>
-      withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
-    );
+    // withRetry wraps the queue slot (not the other way around) so a 429/5xx
+    // backoff sleep doesn't hold a concurrency slot while it waits.
+    return withRetry(() => this.gated(() => this.doComplete(req)));
   }
 
   private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
-    const res = await this.client.chat.completions.create({
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
+    const stream = this.client.beta.chat.completions.stream({
       model: req.model,
       messages: req.messages,
       ...tuningParams(req.model, req.temperature ?? 0.2, req.maxTokens),
     });
+    for await (const _chunk of withIdleTimeout(stream, idleMs, () => stream.abort())) {
+      // no-op: only need finalChatCompletion() below
+    }
+    const res = await stream.finalChatCompletion();
     const text = res.choices?.[0]?.message?.content ?? '';
     const tokensIn = res.usage?.prompt_tokens ?? 0;
     const tokensOut = res.usage?.completion_tokens ?? 0;
@@ -93,10 +131,11 @@ export class OpenAIProvider implements LLMProvider {
     let tokensOut = 0;
     let lastRaw = '';
 
+    const idleMs = req.timeoutMs ?? IDLE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       const res = await withRetry(() =>
-        withTimeout(
-          this.client.chat.completions.create({
+        this.gated(async () => {
+          const stream = this.client.beta.chat.completions.stream({
             model: req.model,
             messages,
             ...tuningParams(req.model, req.temperature, req.maxTokens),
@@ -104,9 +143,12 @@ export class OpenAIProvider implements LLMProvider {
               type: 'json_schema',
               json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
             },
-          }),
-          req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
+          });
+          for await (const _chunk of withIdleTimeout(stream, idleMs, () => stream.abort())) {
+            // no-op
+          }
+          return stream.finalChatCompletion();
+        }),
       );
       lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
@@ -139,7 +181,7 @@ export class OpenAIProvider implements LLMProvider {
     return withRetry(async () => {
       const res = await withTimeout(
         this.client.embeddings.create({ model: EMBED_MODEL, input: texts }),
-        DEFAULT_TIMEOUT,
+        EMBED_TIMEOUT_MS,
       );
       return res.data.map((d) => d.embedding);
     });
