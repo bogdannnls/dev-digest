@@ -56,14 +56,23 @@ export function useCreateSkill() {
 
 export interface UpdateSkillInput {
   id: string;
-  patch: Partial<Pick<Skill, "name" | "description" | "type" | "body" | "enabled">>;
+  patch: Partial<
+    Pick<Skill, "name" | "description" | "type" | "body" | "enabled" | "attached_context_paths">
+  >;
+  /** Transient — the workspace's currently-active repo selection. The server
+   *  REQUIRES this whenever `patch.attached_context_paths` is present (T3's
+   *  `.refine()`, AC-12c's "governing repo"); it validates each submitted path
+   *  against that repo's freshly-discovered set and is never persisted or
+   *  merged into the cached `Skill`. */
+  repo_id?: string;
 }
 
 /** PUT /skills/:id with optimistic patch into the cached list + detail. */
 export function useUpdateSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: UpdateSkillInput) => api.put<Skill>(`/skills/${id}`, patch),
+    mutationFn: ({ id, patch, repo_id }: UpdateSkillInput) =>
+      api.put<Skill>(`/skills/${id}`, repo_id !== undefined ? { ...patch, repo_id } : patch),
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: KEY_LIST });
       const prevList = qc.getQueryData<Skill[]>(KEY_LIST);
