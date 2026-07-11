@@ -1,4 +1,19 @@
 {
+  "list": {
+    "breadcrumbLab": "Workspace",
+    "breadcrumb": "Project Context",
+    "title": "Project Context",
+    "subtitle": "Every markdown file discovered under this repo's specs/, docs/, and insights/ folders — browse and preview what's available to attach to an agent or skill.",
+    "searchPlaceholder": "Filter documents…",
+    "loadError": "Couldn't load documents",
+    "notClonedTitle": "Repo not cloned yet",
+    "notClonedBody": "Clone this repository before Project Context can discover its documents.",
+    "noDocsTitle": "No documents found",
+    "noDocsBody": "This repo has no markdown under specs/, docs/, or insights/ yet. Add some and they'll show up here.",
+    "noMatchTitle": "No documents match",
+    "noMatchBody": "Try clearing the filter.",
+    "noMatchCta": "Clear filter"
+  },
   "title": "Project Context",
   "chunks": "{count} chunks",
   "reindex": "Re-index",
