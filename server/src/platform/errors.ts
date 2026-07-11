@@ -51,3 +51,16 @@ export class RateLimitedError extends AppError {
     super('rate_limited', message, 429, details);
   }
 }
+
+/**
+ * Thrown by `modules/context` (Project Context reader, L05 T1) when a repo
+ * row exists but has no clone on disk yet. Distinct from `NotFoundError`
+ * (repo row itself missing) and from an empty discovered-document list (repo
+ * IS cloned, just has zero matching `.md` files) — AC-4 requires the client
+ * be able to tell these three states apart.
+ */
+export class RepoNotClonedError extends AppError {
+  constructor(message = 'Repo has not been cloned yet', details?: unknown) {
+    super('repo_not_cloned', message, 409, details);
+  }
+}
