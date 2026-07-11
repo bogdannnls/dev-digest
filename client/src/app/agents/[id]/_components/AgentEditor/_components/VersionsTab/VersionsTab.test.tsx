@@ -41,6 +41,7 @@ const v1: AgentVersion = {
     ci_fail_on: "critical",
     repo_intel: false,
     skills: ["s-a", "s-deleted"],
+    attached_context_paths: [],
   },
 };
 
@@ -57,6 +58,7 @@ const v2: AgentVersion = {
     ci_fail_on: "critical",
     repo_intel: true,
     skills: ["s-a", "s-b"],
+    attached_context_paths: [],
   },
 };
 
