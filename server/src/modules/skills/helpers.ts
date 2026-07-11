@@ -36,6 +36,7 @@ export function toSkillDto(row: SkillRow): Skill {
     enabled: row.enabled,
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
+    attached_context_paths: row.attachedContextPaths ?? null,
   };
 }
 
