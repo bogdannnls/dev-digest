@@ -17,6 +17,12 @@ vi.mock("@/lib/hooks/repo-intel", () => ({
 }));
 import { useResyncRepoIntel, useRepoIntelStatus } from "@/lib/hooks/repo-intel";
 
+// Stub the Mermaid renderer: expose the generated chart source via data-chart so
+// the Graph-view test can assert on it without importing/booting real mermaid.
+vi.mock("@/components/mermaid-diagram", () => ({
+  MermaidDiagram: ({ chart }: { chart: string }) => <div data-testid="mermaid" data-chart={chart} />,
+}));
+
 const mockedUseOverviewBlastRadius = useOverviewBlastRadius as unknown as ReturnType<typeof vi.fn>;
 const mockedUseResyncRepoIntel = useResyncRepoIntel as unknown as ReturnType<typeof vi.fn>;
 const mockedUseRepoIntelStatus = useRepoIntelStatus as unknown as ReturnType<typeof vi.fn>;
@@ -44,8 +50,11 @@ const BLAST_EMPTY: BlastRadius = {
 
 // C2 fixture: sort by endpoints desc, then callers desc, then name asc.
 // "highEndpoint" (2 endpoints) must lead; "midCallers" (0 endpoints, 3 callers)
-// is second; "alpha"/"zebra" tie on counts (0/0) and break alphabetically,
-// even though "zebra" appears first in the raw (unsorted) array.
+// is second; "alpha"/"zebra" tie on counts (0 endpoints, 1 caller each) and
+// break alphabetically, even though "zebra" appears first in the raw
+// (unsorted) array. "alpha"/"zebra" each carry one caller (rather than zero
+// downstream) so they stay impactful and visible under the hide-zero-impact
+// filter while still exercising the alphabetical tie-break.
 const BLAST_SORT_FIXTURE: BlastRadius = {
   changed_symbols: [
     { name: "zebra", file: "src/z.ts", kind: "function" },
@@ -54,14 +63,24 @@ const BLAST_SORT_FIXTURE: BlastRadius = {
     { name: "midCallers", file: "src/c.ts", kind: "function" },
   ],
   downstream: [
-    { symbol: "zebra", callers: [], endpoints_affected: [], crons_affected: [] },
+    {
+      symbol: "zebra",
+      callers: [{ name: "zebraCaller", file: "src/zebra-caller.ts", line: 1 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
     {
       symbol: "highEndpoint",
       callers: [],
       endpoints_affected: ["EP1", "EP2"],
       crons_affected: [],
     },
-    { symbol: "alpha", callers: [], endpoints_affected: [], crons_affected: [] },
+    {
+      symbol: "alpha",
+      callers: [{ name: "alphaCaller", file: "src/alpha-caller.ts", line: 1 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
     {
       symbol: "midCallers",
       callers: [
@@ -72,6 +91,45 @@ const BLAST_SORT_FIXTURE: BlastRadius = {
       endpoints_affected: [],
       crons_affected: [],
     },
+  ],
+  summary: "",
+};
+
+// NEW fixture: one impactful symbol + one zero-downstream symbol. The
+// zero-downstream one must be hidden from the tree, and counts.symbols must
+// reflect only the impactful one.
+const BLAST_MIXED_IMPACT_FIXTURE: BlastRadius = {
+  changed_symbols: [
+    { name: "impactfulFn", file: "src/impactful.ts", kind: "function" },
+    { name: "deadFn", file: "src/dead.ts", kind: "function" },
+  ],
+  downstream: [
+    {
+      symbol: "impactfulFn",
+      callers: [{ name: "caller1", file: "src/caller1.ts", line: 5 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+    {
+      symbol: "deadFn",
+      callers: [],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+  ],
+  summary: "",
+};
+
+// NEW fixture: every changed symbol has zero downstream impact. The whole
+// tree must be replaced by the positive empty state, not rendered empty.
+const BLAST_ALL_ZERO_IMPACT_FIXTURE: BlastRadius = {
+  changed_symbols: [
+    { name: "deadFn1", file: "src/dead1.ts", kind: "function" },
+    { name: "deadFn2", file: "src/dead2.ts", kind: "function" },
+  ],
+  downstream: [
+    { symbol: "deadFn1", callers: [], endpoints_affected: [], crons_affected: [] },
+    { symbol: "deadFn2", callers: [], endpoints_affected: [], crons_affected: [] },
   ],
   summary: "",
 };
@@ -192,10 +250,13 @@ describe("BlastRadiusCard", () => {
     });
     renderBlastRadiusCard();
 
-    // Counts row: 1 symbol, 1 caller, 1 endpoint, 1 cron.
-    expect(screen.getByTestId("blast-counts")).toHaveTextContent(
-      "1 symbol · 1 caller · 1 endpoint · 1 cron",
-    );
+    // Counts row: icon + bold number + muted label per metric — 1 symbol
+    // (impactful count, not raw changed-symbol count), 1 caller, 1 endpoint, 1 cron.
+    const counts = screen.getByTestId("blast-counts");
+    expect(counts).toHaveTextContent(/1\s*symbol\b/i);
+    expect(counts).toHaveTextContent(/1\s*caller\b/i);
+    expect(counts).toHaveTextContent(/1\s*endpoint\b/i);
+    expect(counts).toHaveTextContent(/1\s*cron\b/i);
 
     // Symbol node is expanded by default (it has >=1 caller) — caller link visible immediately.
     const callerLink = screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i });
@@ -313,10 +374,12 @@ describe("BlastRadiusCard", () => {
     renderBlastRadiusCard();
 
     expect(screen.getAllByTestId("blast-symbol-name")).toHaveLength(2);
-    // Both distinct callers must be visible — a `.find()`-by-name bug would show
-    // "callerA" (the first match) under both "process" nodes and never render "callerB".
-    expect(screen.getByText("callerA")).toBeInTheDocument();
-    expect(screen.getByText("callerB")).toBeInTheDocument();
+    // Both distinct callers must be visible as their file:line link (caller
+    // rows show only the link, not the caller name) — a `.find()`-by-name bug
+    // would show "callerA"'s file (the first match) under both "process" nodes
+    // and never render "src/callerB.ts:2".
+    expect(screen.getByRole("link", { name: /src\/callerA\.ts:1/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /src\/callerB\.ts:2/i })).toBeInTheDocument();
   });
 
   it("(C3) collapses test-file callers behind an expandable sub-row; negative heuristic cases stay in the prod list", async () => {
@@ -328,21 +391,60 @@ describe("BlastRadiusCard", () => {
     });
     renderBlastRadiusCard();
 
-    // Prod callers render immediately, INCLUDING the two negative cases that must
-    // NOT be classified as test files despite containing "test"/"contest" substrings.
-    expect(screen.getByText("handleCheckout")).toBeInTheDocument();
-    expect(screen.getByText("contestHandler")).toBeInTheDocument();
-    expect(screen.getByText("testingUtilCaller")).toBeInTheDocument();
+    // Prod callers render immediately as their file:line link, INCLUDING the
+    // two negative cases that must NOT be classified as test files despite
+    // containing "test"/"contest" substrings. Caller rows show only the
+    // file:line link — no enclosing caller-name text.
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:10/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /src\/contest\.ts:5/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /src\/testing\.ts:7/i })).toBeInTheDocument();
 
     // Test callers are collapsed by default — not in the DOM yet.
-    expect(screen.queryByText("chargeCardTest")).not.toBeInTheDocument();
-    expect(screen.queryByText("chargeCardSpec")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /src\/billing\/charge\.test\.ts:20/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /src\/billing\/__tests__\/charge\.spec\.tsx:3/i }),
+    ).not.toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: /2 test callers/i });
 
     // Expanding reveals all test callers.
     await user.click(toggle);
-    expect(screen.getByText("chargeCardTest")).toBeInTheDocument();
-    expect(screen.getByText("chargeCardSpec")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /src\/billing\/charge\.test\.ts:20/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /src\/billing\/__tests__\/charge\.spec\.tsx:3/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("(NEW) hides zero-downstream symbols from the tree; counts.symbols reflects only impactful ones", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_MIXED_IMPACT_FIXTURE },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    // Only the impactful symbol renders — "deadFn" (zero callers/endpoints/crons) is hidden.
+    const names = screen.getAllByTestId("blast-symbol-name").map((el) => el.textContent);
+    expect(names).toEqual(["impactfulFn"]);
+    expect(screen.queryByText("deadFn")).not.toBeInTheDocument();
+
+    // The counts row's "symbols" number reflects the SHOWN count (1), not the raw
+    // changed-symbol count (2).
+    expect(screen.getByTestId("blast-counts")).toHaveTextContent(/1\s*symbol\b/i);
+  });
+
+  it("(NEW) all changed symbols zero-impact: renders the positive empty state instead of an empty tree", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_ALL_ZERO_IMPACT_FIXTURE },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    expect(screen.getByText("Indexed — no downstream impact detected")).toBeInTheDocument();
+    expect(screen.queryByTestId("blast-symbol-name")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("blast-counts")).not.toBeInTheDocument();
   });
 
   it("(C4) renders the summary paragraph when non-empty, and renders nothing for an empty summary", () => {
@@ -420,5 +522,28 @@ describe("BlastRadiusCard", () => {
     );
 
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("Graph view swaps the tree for a Mermaid flowchart of the impactful symbols", async () => {
+    const user = userEvent.setup();
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_WITH_ROWS },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    // Default Tree: the symbol node is a button; no mermaid yet.
+    expect(screen.getByRole("button", { name: /chargeCard/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("mermaid")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^graph$/i }));
+
+    const chart = screen.getByTestId("mermaid").getAttribute("data-chart") ?? "";
+    expect(chart.startsWith("graph LR")).toBe(true);
+    expect(chart).toContain("chargeCard()");
+    expect(chart).toContain("POST /checkout");
+    // Tree is replaced, not shown alongside.
+    expect(screen.queryByRole("button", { name: /chargeCard/i })).not.toBeInTheDocument();
   });
 });

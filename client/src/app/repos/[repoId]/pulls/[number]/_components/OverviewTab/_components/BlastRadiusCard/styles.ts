@@ -21,9 +21,29 @@ export const s = {
     gap: 12,
     flexWrap: "wrap",
   } satisfies CSSProperties,
-  counts: {
+  countsList: {
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  countItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+  } satisfies CSSProperties,
+  countIcon: {
+    color: "var(--accent-blast, #0891b2)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  countNumber: {
     fontSize: 13,
-    color: "var(--text-secondary)",
+    fontWeight: 700,
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  countLabel: {
+    fontSize: 13,
+    color: "var(--text-muted)",
   } satisfies CSSProperties,
   summary: {
     margin: 0,
@@ -117,7 +137,10 @@ export const s = {
     flexDirection: "column",
     gap: 6,
     margin: 0,
-    padding: 0,
+    padding: "2px 0 2px 10px",
+    // Vertical guide line running down the group; each row's `↳` connector
+    // (below) reads as a branch off this line.
+    borderLeft: "1px solid var(--border)",
     listStyle: "none",
   } satisfies CSSProperties,
   callerItem: {
@@ -130,10 +153,6 @@ export const s = {
   callerConnector: {
     color: "var(--text-muted)",
     fontSize: 12,
-  } satisfies CSSProperties,
-  callerName: {
-    fontWeight: 500,
-    color: "var(--text-secondary)",
   } satisfies CSSProperties,
   noCallers: {
     fontSize: 13,
@@ -160,5 +179,31 @@ export const s = {
     display: "flex",
     flexWrap: "wrap",
     gap: 8,
+  } satisfies CSSProperties,
+  /* Custom-styled chips (not the vendor `Chip` primitive, which only tints its
+     icon) so endpoints/crons get a distinct colored background per the design. */
+  endpointChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    borderRadius: 6,
+    fontSize: 12,
+    fontFamily: "var(--font-mono, monospace)",
+    background: "rgba(59, 130, 246, 0.12)",
+    color: "#60a5fa",
+    border: "1px solid rgba(59, 130, 246, 0.3)",
+  } satisfies CSSProperties,
+  cronChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 10px",
+    borderRadius: 6,
+    fontSize: 12,
+    fontFamily: "var(--font-mono, monospace)",
+    background: "rgba(217, 119, 6, 0.14)",
+    color: "#f59e0b",
+    border: "1px solid rgba(217, 119, 6, 0.32)",
   } satisfies CSSProperties,
 } as const;

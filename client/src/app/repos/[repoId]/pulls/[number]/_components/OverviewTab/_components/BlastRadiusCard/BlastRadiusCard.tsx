@@ -10,11 +10,14 @@
 "use client";
 
 import React from "react";
-import { Icon, Skeleton, ErrorState, EmptyState, Badge, Chip, SectionLabel, MonoLink } from "@devdigest/ui";
+import { Icon, Skeleton, ErrorState, EmptyState, Badge, SectionLabel, MonoLink } from "@devdigest/ui";
+import type { IconName } from "@devdigest/ui";
 import type { BlastCaller, BlastRadius, ChangedSymbol, DownstreamImpact, RepoProvider } from "@devdigest/shared";
 import { useOverviewBlastRadius } from "@/lib/hooks/overview";
 import { useResyncRepoIntel, useRepoIntelStatus } from "@/lib/hooks/repo-intel";
 import { repoBlobUrl } from "@/lib/repo-source-urls";
+import { MermaidDiagram } from "@/components/mermaid-diagram";
+import { buildBlastMermaid } from "./blast-graph";
 import { s } from "./styles";
 
 /** Server `DegradedReason` enum → human copy for the reason badge. The server always
@@ -38,6 +41,20 @@ function plural(n: number, word: string): string {
     convention or the dedicated directory count as test code. */
 function isTestPath(path: string): boolean {
   return /\.(test|spec)\.[jt]sx?$/.test(path) || /(^|\/)__tests__\//.test(path);
+}
+
+/** A symbol has downstream impact when it has at least one caller, affected
+    endpoint, or affected cron. Symbols with none of those must not render in
+    the tree — "in no caller we don't show it" — and the counts row's
+    "symbols" number must reflect only symbols that pass this check, not the
+    raw changed-symbol count, so the header stays consistent with what's shown. */
+function hasDownstreamImpact(downstream: DownstreamImpact | undefined): boolean {
+  if (!downstream) return false;
+  return (
+    downstream.callers.length > 0 ||
+    downstream.endpoints_affected.length > 0 ||
+    downstream.crons_affected.length > 0
+  );
 }
 
 interface SymbolDownstreamPair {
@@ -79,22 +96,64 @@ interface BlastRadiusCardProps {
   provider: RepoProvider | null;
 }
 
-/** Tree | Graph segmented control. Graph mode is v2 (spec §7) — rendered
-    disabled with a tooltip until the graph view ships; Tree is the only
-    view that ever renders. */
-function ViewToggle() {
-  const [view] = React.useState<"tree" | "graph">("tree");
+/** One counts-row entry: icon + bold number + muted plural label, e.g.
+    `<Code/> 2 symbols`. Regular English pluralization (word + "s"). */
+function CountItem({ icon, count, word }: { icon: IconName; count: number; word: string }) {
+  const I = Icon[icon];
+  return (
+    <span style={s.countItem}>
+      <I size={14} style={s.countIcon} />
+      <span style={s.countNumber}>{count}</span>{" "}
+      <span style={s.countLabel}>
+        {word}
+        {count === 1 ? "" : "s"}
+      </span>
+    </span>
+  );
+}
+
+/** Positive terminal state: the repo index is up to date and either there
+    were no changed symbols at all, or every changed symbol had zero
+    downstream impact (no callers, endpoints, or crons) — same copy either
+    way, so a zero-impact-only PR never renders an empty tree. */
+function NoImpactEmptyState() {
+  return (
+    <section>
+      <SectionLabel icon="Workflow">Blast radius</SectionLabel>
+      <EmptyState
+        icon="CheckCircle"
+        title="Indexed — no downstream impact detected"
+        body="The repo index is up to date and no callers, endpoints, or crons were affected by this change."
+      />
+    </section>
+  );
+}
+
+/** Tree | Graph segmented control. Tree is the per-symbol expandable list;
+    Graph renders the same impactful symbols as a Mermaid flowchart. State is
+    lifted to the card so the body can swap views. */
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: "tree" | "graph";
+  onChange: (v: "tree" | "graph") => void;
+}) {
   return (
     <div style={s.viewToggle} role="group" aria-label="Blast radius view">
-      <button type="button" style={s.viewToggleBtn(view === "tree")} aria-pressed={view === "tree"}>
+      <button
+        type="button"
+        style={s.viewToggleBtn(view === "tree")}
+        aria-pressed={view === "tree"}
+        onClick={() => onChange("tree")}
+      >
         Tree
       </button>
       <button
         type="button"
-        style={s.viewToggleBtn(false)}
-        disabled
-        aria-pressed={false}
-        title="Graph view — v2"
+        style={s.viewToggleBtn(view === "graph")}
+        aria-pressed={view === "graph"}
+        onClick={() => onChange("graph")}
       >
         Graph
       </button>
@@ -119,8 +178,9 @@ function CallerRow({
       : undefined;
   return (
     <li style={s.callerItem}>
-      <span style={s.callerConnector}>↳</span>
-      <span style={s.callerName}>{caller.name}</span>
+      <span style={s.callerConnector} aria-hidden="true">
+        ↳
+      </span>
       <MonoLink href={fileHref}>
         {caller.file}:{caller.line}
       </MonoLink>
@@ -252,9 +312,10 @@ function SymbolNode({
           {endpoints.length > 0 && (
             <div style={s.chipRow}>
               {endpoints.map((endpoint) => (
-                <Chip key={endpoint} icon="Globe">
+                <span key={endpoint} style={s.endpointChip}>
+                  <Icon.Globe size={12} />
                   {endpoint}
-                </Chip>
+                </span>
               ))}
             </div>
           )}
@@ -262,9 +323,10 @@ function SymbolNode({
           {crons.length > 0 && (
             <div style={s.chipRow}>
               {crons.map((cron) => (
-                <Chip key={cron} icon="Clock">
+                <span key={cron} style={s.cronChip}>
+                  <Icon.Clock size={12} />
                   {cron}
-                </Chip>
+                </span>
               ))}
             </div>
           )}
@@ -283,6 +345,7 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
   // index identity (lastIndexedSha/updatedAt) advancing past the value captured at
   // resync start — the convention documented in hooks/repo-intel.ts.
   const [isResyncing, setIsResyncing] = React.useState(false);
+  const [view, setView] = React.useState<"tree" | "graph">("tree");
   const repoIntelStatus = useRepoIntelStatus(repoId, isResyncing);
   const baselineRef = React.useRef<string | null>(null);
 
@@ -316,19 +379,26 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
     }
   }, [isResyncing, repoIntelStatus.data, refetch]);
 
+  // "symbols" counts only IMPACTFUL symbols (hasDownstreamImpact) — zero-impact
+  // symbols are hidden from the tree below, so the counts row must match what's
+  // actually shown, not the raw changed-symbol count.
   const counts = React.useMemo(() => {
     const blast = data?.data;
     if (!blast) return { symbols: 0, callers: 0, endpoints: 0, crons: 0 };
     const endpointSet = new Set<string>();
     const cronSet = new Set<string>();
     let callers = 0;
-    for (const d of blast.downstream) {
+    let symbols = 0;
+    blast.changed_symbols.forEach((_, i) => {
+      const d = blast.downstream[i];
+      if (!d) return;
       callers += d.callers.length;
       for (const e of d.endpoints_affected) endpointSet.add(e);
       for (const c of d.crons_affected) cronSet.add(c);
-    }
+      if (hasDownstreamImpact(d)) symbols += 1;
+    });
     return {
-      symbols: blast.changed_symbols.length,
+      symbols,
       callers,
       endpoints: endpointSet.size,
       crons: cronSet.size,
@@ -378,30 +448,31 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
   }
 
   if (status === "ready" && !hasChangedSymbols) {
-    return (
-      <section>
-        <SectionLabel icon="Workflow">Blast radius</SectionLabel>
-        <EmptyState
-          icon="CheckCircle"
-          title="Indexed — no downstream impact detected"
-          body="The repo index is up to date and no callers, endpoints, or crons were affected by this change."
-        />
-      </section>
-    );
+    return <NoImpactEmptyState />;
   }
 
-  const symbolPairs = pairAndSortSymbols(blast);
+  // Hide zero-impact symbols from the tree ("in no caller we don't show it") —
+  // a changed symbol with no callers, endpoints, or crons carries no actionable
+  // signal. If that leaves nothing to show, fall back to the same positive
+  // empty state used when there were no changed symbols at all.
+  const symbolPairs = pairAndSortSymbols(blast).filter((pair) => hasDownstreamImpact(pair.downstream));
+
+  if (symbolPairs.length === 0) {
+    return <NoImpactEmptyState />;
+  }
 
   return (
     <section>
       <SectionLabel icon="Workflow">Blast radius</SectionLabel>
       <div style={s.card}>
         <div style={s.countsRow}>
-          <span style={s.counts} data-testid="blast-counts">
-            {plural(counts.symbols, "symbol")} · {plural(counts.callers, "caller")} ·{" "}
-            {plural(counts.endpoints, "endpoint")} · {plural(counts.crons, "cron")}
-          </span>
-          <ViewToggle />
+          <div style={s.countsList} data-testid="blast-counts">
+            <CountItem icon="Code" count={counts.symbols} word="symbol" />{" "}
+            <CountItem icon="CornerDownRight" count={counts.callers} word="caller" />{" "}
+            <CountItem icon="Globe" count={counts.endpoints} word="endpoint" />{" "}
+            <CountItem icon="Clock" count={counts.crons} word="cron" />
+          </div>
+          <ViewToggle view={view} onChange={setView} />
         </div>
 
         {blast.summary ? <p style={s.summary}>{blast.summary}</p> : null}
@@ -412,18 +483,22 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
           </Badge>
         )}
 
-        <div style={s.symbolList}>
-          {symbolPairs.map(({ key, symbol, downstream }) => (
-            <SymbolNode
-              key={key}
-              symbol={symbol}
-              downstream={downstream}
-              repoFullName={repoFullName}
-              headSha={linkSha}
-              provider={provider}
-            />
-          ))}
-        </div>
+        {view === "graph" ? (
+          <MermaidDiagram chart={buildBlastMermaid(symbolPairs)} />
+        ) : (
+          <div style={s.symbolList}>
+            {symbolPairs.map(({ key, symbol, downstream }) => (
+              <SymbolNode
+                key={key}
+                symbol={symbol}
+                downstream={downstream}
+                repoFullName={repoFullName}
+                headSha={linkSha}
+                provider={provider}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
