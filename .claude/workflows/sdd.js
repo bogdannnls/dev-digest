@@ -411,6 +411,74 @@ function normalizeSecurityFindings(items) {
   }))
 }
 
+// Dispatches the applicable reviewer set — architecture-reviewer always, plus
+// security-reviewer and api-contract-reviewer when surfaces.touchesAuthOrContracts
+// — and returns their combined findings. Shared by Phase 3 (initial review) and
+// Phase 4 (MUST-finding recheck) so the recheck always consults the SAME set of
+// reviewers as the initial pass. Dispatching the recheck to architecture-reviewer
+// alone would silently drop security/api-contract MUST findings from its charter,
+// making them look "resolved" when the reviewer that owns that domain never
+// actually re-inspected them.
+async function runApplicableReviewers({
+  surfaces,
+  phase: phaseName,
+  recheck = false,
+  findingsToRecheck = [],
+  labelSuffix = '',
+}) {
+  const suffix = labelSuffix ? `-${labelSuffix}` : ''
+  const jobs = [
+    {
+      kind: 'architecture',
+      agentType: 'architecture-reviewer',
+      schema: FINDINGS_SCHEMA,
+      prompt: recheck ? buildRecheckPrompt(findingsToRecheck) : ARCHITECTURE_REVIEW_PROMPT,
+      label: recheck ? `review:recheck-architecture${suffix}` : 'review:architecture',
+    },
+  ]
+
+  if (surfaces?.touchesAuthOrContracts) {
+    jobs.push({
+      kind: 'security',
+      agentType: 'security-reviewer',
+      schema: SECURITY_FINDINGS_SCHEMA,
+      prompt: recheck ? buildRecheckPrompt(findingsToRecheck) : SECURITY_REVIEW_PROMPT,
+      label: recheck ? `review:recheck-security${suffix}` : 'review:security',
+    })
+    jobs.push({
+      kind: 'apiContract',
+      agentType: 'api-contract-reviewer',
+      schema: FINDINGS_SCHEMA,
+      prompt: recheck ? buildRecheckPrompt(findingsToRecheck) : API_CONTRACT_REVIEW_PROMPT,
+      label: recheck ? `review:recheck-api-contract${suffix}` : 'review:api-contract',
+    })
+  }
+  // Note: test-writer is deliberately never dispatched from this workflow.
+
+  const results = await parallel(
+    jobs.map(job => () =>
+      agent(job.prompt, {
+        agentType: job.agentType,
+        model: 'sonnet',
+        label: job.label,
+        phase: phaseName,
+        schema: job.schema,
+      })
+    )
+  )
+
+  const byKind = {}
+  jobs.forEach((job, i) => {
+    byKind[job.kind] = results[i]
+  })
+
+  const architectureFindings = byKind.architecture?.findings ?? []
+  const apiContractFindings = byKind.apiContract?.findings ?? []
+  const securityFindings = normalizeSecurityFindings(byKind.security?.findings ?? [])
+
+  return [...architectureFindings, ...apiContractFindings, ...securityFindings]
+}
+
 // ---------------------------------------------------------------------------
 // Phase 0 — Preflight
 // ---------------------------------------------------------------------------
@@ -535,57 +603,7 @@ const surfaces = await agent(SURFACE_DETECTION_PROMPT, {
   schema: DIFF_SURFACE_SCHEMA,
 })
 
-const reviewJobs = [
-  {
-    kind: 'architecture',
-    thunk: () =>
-      agent(ARCHITECTURE_REVIEW_PROMPT, {
-        agentType: 'architecture-reviewer',
-        model: 'sonnet',
-        label: 'review:architecture',
-        phase: 'Review',
-        schema: FINDINGS_SCHEMA,
-      }),
-  },
-]
-
-if (surfaces?.touchesAuthOrContracts) {
-  reviewJobs.push({
-    kind: 'security',
-    thunk: () =>
-      agent(SECURITY_REVIEW_PROMPT, {
-        agentType: 'security-reviewer',
-        model: 'sonnet',
-        label: 'review:security',
-        phase: 'Review',
-        schema: SECURITY_FINDINGS_SCHEMA,
-      }),
-  })
-  reviewJobs.push({
-    kind: 'apiContract',
-    thunk: () =>
-      agent(API_CONTRACT_REVIEW_PROMPT, {
-        agentType: 'api-contract-reviewer',
-        model: 'sonnet',
-        label: 'review:api-contract',
-        phase: 'Review',
-        schema: FINDINGS_SCHEMA,
-      }),
-  })
-}
-// Note: test-writer is deliberately never dispatched from this workflow.
-
-const reviewResults = await parallel(reviewJobs.map(j => j.thunk))
-const reviewByKind = {}
-reviewJobs.forEach((job, i) => {
-  reviewByKind[job.kind] = reviewResults[i]
-})
-
-const architectureFindings = reviewByKind.architecture?.findings ?? []
-const apiContractFindings = reviewByKind.apiContract?.findings ?? []
-const securityFindings = normalizeSecurityFindings(reviewByKind.security?.findings ?? [])
-
-const allReviewFindings = [...architectureFindings, ...apiContractFindings, ...securityFindings]
+const allReviewFindings = await runApplicableReviewers({ surfaces, phase: 'Review' })
 const shouldFindings = allReviewFindings.filter(f => f.severity === 'SHOULD')
 const initialMustFindings = allReviewFindings.filter(f => f.severity === 'MUST')
 
@@ -615,15 +633,15 @@ while (mustFindings.length > 0 && fixIteration < MAX_FIX_ITERATIONS) {
 
   fixes.push({ iteration: fixIteration, findingsAddressed: mustFindings, outcome: fixResult })
 
-  const recheck = await agent(buildRecheckPrompt(mustFindings), {
-    agentType: 'architecture-reviewer',
-    model: 'sonnet',
-    label: `review:recheck-${fixIteration}`,
+  const recheckFindings = await runApplicableReviewers({
+    surfaces,
     phase: 'Fix loop',
-    schema: FINDINGS_SCHEMA,
+    recheck: true,
+    findingsToRecheck: mustFindings,
+    labelSuffix: String(fixIteration),
   })
 
-  mustFindings = (recheck?.findings ?? []).filter(f => f.severity === 'MUST')
+  mustFindings = recheckFindings.filter(f => f.severity === 'MUST')
 }
 
 // Counts fix ATTEMPTS (findings handed to the implementer, summed across

@@ -16,7 +16,7 @@ You are designed for parallel dispatch — many copies of you may be running on 
 You receive one task object from a plan, structured like:
 
 ```
-target_module: server | client | reviewer-core | e2e | cross-cutting
+target_module: server | client | reviewer-core | mcp | e2e | cross-cutting
 files_to_touch: [paths]
 depends_on: [task ids]
 description: <what + why>

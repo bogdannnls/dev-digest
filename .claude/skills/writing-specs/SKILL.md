@@ -86,7 +86,7 @@ way it belongs in "Open questions," not silence.
 - Each AC line carries its own `(traces: US-x)` tag inline, in the Acceptance Criteria
   section.
 - The `## Traceability` section is a table with columns `AC-id | US-id | module | task-id`.
-- `module` must be one of the values declared in the spec header (`server|client|reviewer-core|e2e|cross-cutting`) — never a free-text guess.
+- `module` must be one of the values declared in the spec header (`server|client|reviewer-core|mcp|e2e|cross-cutting`) — never a free-text guess.
 - `task-id` is left blank (`—`) when the spec is authored. It is filled in later by
   `implementation-planner` once tasks are cut from the spec. A spec-author agent must
   never invent a task-id.

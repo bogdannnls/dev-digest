@@ -160,6 +160,8 @@ For each task, name the **exact shell command** the implementer must run to self
 - `client/` build: `cd client && pnpm build`
 - `reviewer-core/` test: `cd reviewer-core && npm test` — note `npm`, not `pnpm`.
 - `reviewer-core/` typecheck: `cd reviewer-core && npm run typecheck`
+- `mcp/` test: `cd mcp && pnpm test`
+- `mcp/` typecheck: `cd mcp && pnpm typecheck`
 - `e2e/` test: `./scripts/e2e.sh` — heavy, only assign when the task itself is about e2e.
 
 Prefer the narrowest command that proves the task's `definition_of_done`. Don't ask the implementer to run the full suite when a single file's tests would suffice. Where an AC carries a `(verify: ...)` hint, prefer a `test_command` that actually exercises it.
@@ -205,7 +207,7 @@ single | multi
 ### Task graph
 
 #### Task T1 — <short title>
-- target_module: server | client | reviewer-core | e2e | cross-cutting
+- target_module: server | client | reviewer-core | mcp | e2e | cross-cutting
 - files_to_touch:
   - `path/to/file.ts`
   - `path/to/other.ts`
