@@ -3,25 +3,34 @@
  *
  * Verifies the route's wiring end-to-end against a real Postgres:
  *   getPull() (workspace-scoped) → getChangedFilePaths() (prFiles) →
- *   container.repoIntel.getBlastRadius(repoId, files) → projectBlastRadius().
+ *   container.repoIntel.getBlastRadius(repoId, files) → projectBlastRadius()
+ *   → optional one-paragraph LLM risk summary.
  *
  * `repoIntel` is a facade injected via `ContainerOverrides.repoIntel` — its
  * `getBlastRadius` is stubbed with `vi.fn()` per-test so we control the
  * flat `BlastResult` shape and assert the route correctly regroups it into
  * the wire `BlastRadius` envelope (grouped by symbol, per-symbol callers +
- * endpoints_affected). AC1: this pure-read path never calls an LLM — the
- * projection hardcodes `summary: ''`, and no `overrides.llm` is ever
- * configured in this suite, so any accidental LLM call would surface as a
- * ConfigError (missing secrets) rather than a silent success.
+ * endpoints_affected).
+ *
+ * Resilience contract for the optional summary (`OverviewService.getBlastRadius`):
+ *   - a summary is only attempted when `data.changed_symbols.length > 0`;
+ *   - on success, `summary` is the LLM's returned text and the LLM is called
+ *     exactly once, routed through the cheap ('summary' task) model;
+ *   - on ANY failure (provider misconfigured, throw, timeout) the request
+ *     still returns 200 with `summary: ''` — an LLM failure must never fail
+ *     the blast-radius request;
+ *   - zero-row / 0-file / degraded-empty / 404 paths make NO LLM call at all.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockGitHubClient, MockLLMProvider, MockSecretsProvider } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import type { RepoIntel, BlastResult } from '../src/modules/repo-intel/types.js';
+import type { ContainerOverrides } from '../src/platform/container.js';
+import type { LLMProvider } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -51,6 +60,28 @@ function makeRepoIntelStub(result: BlastResult): RepoIntel {
     getTopFilesByRank: vi.fn(),
     getCriticalPaths: vi.fn(),
   } as unknown as RepoIntel;
+}
+
+/** An LLM stub whose `complete()` rejects — exercises the resilience catch path. */
+function makeThrowingLlm(): LLMProvider {
+  return {
+    id: 'anthropic',
+    listModels: vi.fn(),
+    complete: vi.fn().mockRejectedValue(new Error('provider unavailable')),
+    completeStructured: vi.fn(),
+    embed: vi.fn(),
+  } as unknown as LLMProvider;
+}
+
+/** An LLM stub that must never be invoked — for the "no LLM call" scenarios. */
+function makeUncalledLlm(): LLMProvider {
+  return {
+    id: 'anthropic',
+    listModels: vi.fn(),
+    complete: vi.fn(),
+    completeStructured: vi.fn(),
+    embed: vi.fn(),
+  } as unknown as LLMProvider;
 }
 
 d('GET /pulls/:id/overview/blast-radius', () => {
@@ -102,7 +133,14 @@ d('GET /pulls/:id/overview/blast-radius', () => {
     prId = pr!.id;
   });
 
-  function makeApp(repoIntel: RepoIntel) {
+  // `secrets: new MockSecretsProvider()` is a blanket safe default across every
+  // test in this suite: it returns `undefined` for every key, so a summary
+  // attempt that reaches `container.llm(...)` without an explicit `llm`
+  // override throws `ConfigError` (caught by the resilience try/catch) rather
+  // than falling through to `LocalSecretsProvider`'s real `~/.devdigest/secrets.json`
+  // — this suite must never make a live LLM call regardless of the machine
+  // it runs on. Tests that exercise the LLM path pass `overrides.llm` explicitly.
+  function makeApp(repoIntel: RepoIntel, extra: Partial<ContainerOverrides> = {}) {
     const config = loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
     return buildApp({
       config,
@@ -111,11 +149,13 @@ d('GET /pulls/:id/overview/blast-radius', () => {
         git: new MockGitClient(),
         forge: { github: new MockGitHubClient() },
         repoIntel,
+        secrets: new MockSecretsProvider(),
+        ...extra,
       },
     });
   }
 
-  it('ready + rows: groups callers per changed symbol, threads endpoints/crons, and never runs an LLM', async () => {
+  it('ready + rows: groups callers per changed symbol, threads endpoints/crons, and fills summary from a single LLM call', async () => {
     await pg.handle.db.insert(t.prFiles).values([
       { prId, path: 'src/util/helper.ts', additions: 5, deletions: 1 },
       { prId, path: 'src/util/parser.ts', additions: 3, deletions: 0 },
@@ -139,7 +179,12 @@ d('GET /pulls/:id/overview/blast-radius', () => {
       degraded: false,
     };
     const repoIntel = makeRepoIntelStub(result);
-    const app = await makeApp(repoIntel);
+    const cannedSummary = 'This change touches date formatting used by the users and orders list endpoints.';
+    const llm = new MockLLMProvider('anthropic', { completionText: cannedSummary });
+    const app = await makeApp(repoIntel, {
+      llm: { anthropic: llm },
+      featureModelResolver: async () => ({ provider: 'anthropic', model: 'claude-sonnet-5' }),
+    });
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
     expect(res.statusCode).toBe(200);
@@ -168,8 +213,69 @@ d('GET /pulls/:id/overview/blast-radius', () => {
         crons_affected: [],
       },
     ]);
-    // AC1 — no LLM ran on this pure-read path; the projection hardcodes an empty summary.
+    // Resilience contract: summary is the LLM's text, and the LLM ran exactly
+    // once, routed through the cheap ('summary' task) model — not whatever
+    // model `review_intent` is configured with.
+    expect(body.data.summary).toBe(cannedSummary);
+    const completeCalls = llm.calls.filter((c) => c.method === 'complete');
+    expect(completeCalls).toHaveLength(1);
+    expect((completeCalls[0]!.req as { model: string }).model).toBe('claude-haiku-4-5');
+    await app.close();
+  });
+
+  it('llm throws: summary degrades to empty string, downstream data stays intact, and the request still succeeds', async () => {
+    await pg.handle.db.insert(t.prFiles).values([
+      { prId, path: 'src/util/helper.ts', additions: 5, deletions: 1 },
+      { prId, path: 'src/util/parser.ts', additions: 3, deletions: 0 },
+    ]);
+
+    const result: BlastResult = {
+      changedSymbols: [
+        { file: 'src/util/helper.ts', name: 'formatDate', kind: 'function' },
+        { file: 'src/util/parser.ts', name: 'parseDate', kind: 'function' },
+      ],
+      callers: [
+        { file: 'src/routes/users.ts', symbol: 'listUsers', viaSymbol: 'formatDate', line: 12, rank: 90 },
+        { file: 'src/routes/orders.ts', symbol: 'listOrders', viaSymbol: 'formatDate', line: 30, rank: 50 },
+        { file: 'src/routes/users.ts', symbol: 'getUser', viaSymbol: 'parseDate', line: 40, rank: 90 },
+      ],
+      impactedEndpoints: ['GET /users', 'GET /orders'],
+      factsByFile: {
+        'src/routes/users.ts': { endpoints: ['GET /users'], crons: [] },
+        'src/routes/orders.ts': { endpoints: ['GET /orders'], crons: ['nightly-orders'] },
+      },
+      degraded: false,
+    };
+    const repoIntel = makeRepoIntelStub(result);
+    const app = await makeApp(repoIntel, {
+      llm: { anthropic: makeThrowingLlm() },
+      featureModelResolver: async () => ({ provider: 'anthropic', model: 'claude-sonnet-5' }),
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.status).toBe('ready');
+    // An LLM failure must never fail the blast-radius request or drop data.
     expect(body.data.summary).toBe('');
+    expect(body.data.downstream).toEqual([
+      {
+        symbol: 'formatDate',
+        callers: [
+          { name: 'listUsers', file: 'src/routes/users.ts', line: 12 },
+          { name: 'listOrders', file: 'src/routes/orders.ts', line: 30 },
+        ],
+        endpoints_affected: ['GET /users', 'GET /orders'],
+        crons_affected: ['nightly-orders'],
+      },
+      {
+        symbol: 'parseDate',
+        callers: [{ name: 'getUser', file: 'src/routes/users.ts', line: 40 }],
+        endpoints_affected: ['GET /users'],
+        crons_affected: [],
+      },
+    ]);
     await app.close();
   });
 
@@ -190,6 +296,12 @@ d('GET /pulls/:id/overview/blast-radius', () => {
       reason: 'no_data',
     };
     const repoIntel = makeRepoIntelStub(result);
+    // No `overrides.llm` here: `changed_symbols.length > 0` so a summary IS
+    // attempted, but with no LLM stub configured, `container.llm('anthropic')`
+    // hits `MockSecretsProvider()` (default in `makeApp`), which has no key
+    // configured → throws `ConfigError` → caught → summary degrades to ''.
+    // This exercises the resilience path via a naturally-missing provider,
+    // without needing an explicit throwing stub.
     const app = await makeApp(repoIntel);
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
@@ -198,6 +310,7 @@ d('GET /pulls/:id/overview/blast-radius', () => {
 
     expect(body.status).toBe('degraded');
     expect(body.reason).toBe('no_data');
+    expect(body.data.summary).toBe('');
     expect(body.data.downstream).toEqual([
       {
         symbol: 'formatDate',
@@ -229,7 +342,10 @@ d('GET /pulls/:id/overview/blast-radius', () => {
       reason: 'no_data',
     };
     const repoIntel = makeRepoIntelStub(result);
-    const app = await makeApp(repoIntel);
+    // Empty `changed_symbols` → no summary attempt at all. Spy on `complete()`
+    // to prove it, rather than only inferring it from an empty `summary`.
+    const llm = makeUncalledLlm();
+    const app = await makeApp(repoIntel, { llm: { anthropic: llm } });
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
     expect(res.statusCode).toBe(200);
@@ -239,10 +355,12 @@ d('GET /pulls/:id/overview/blast-radius', () => {
     expect(body.reason).toBe('no_data');
     expect(body.data.changed_symbols).toEqual([]);
     expect(body.data.downstream).toEqual([]);
+    expect(body.data.summary).toBe('');
+    expect(llm.complete).not.toHaveBeenCalled();
     await app.close();
   });
 
-  it('no changed files (0-file merge PR): short-circuits to ready-empty WITHOUT consulting the facade', async () => {
+  it('no changed files (0-file merge PR): short-circuits to ready-empty WITHOUT consulting the facade or the LLM', async () => {
     // beforeEach creates the PR but inserts no prFiles rows → getChangedFilePaths() === [].
     // The facade WOULD report degraded/no_data for an empty input set; the service must
     // short-circuit before reaching it so a 0-file PR is not misreported as "index missing".
@@ -253,7 +371,8 @@ d('GET /pulls/:id/overview/blast-radius', () => {
       degraded: true,
       reason: 'no_data',
     });
-    const app = await makeApp(repoIntel);
+    const llm = makeUncalledLlm();
+    const app = await makeApp(repoIntel, { llm: { anthropic: llm } });
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
     expect(res.statusCode).toBe(200);
@@ -263,6 +382,7 @@ d('GET /pulls/:id/overview/blast-radius', () => {
     expect(body.reason).toBeUndefined();
     expect(body.data).toEqual({ changed_symbols: [], downstream: [], summary: '' });
     expect(repoIntel.getBlastRadius).not.toHaveBeenCalled();
+    expect(llm.complete).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -304,15 +424,17 @@ d('GET /pulls/:id/overview/blast-radius', () => {
       impactedEndpoints: [],
       degraded: false,
     });
-    const app = await makeApp(repoIntel);
+    const llm = makeUncalledLlm();
+    const app = await makeApp(repoIntel, { llm: { anthropic: llm } });
 
     const res = await app.inject({
       method: 'GET',
       url: `/pulls/${otherPr!.id}/overview/blast-radius`,
     });
     expect(res.statusCode).toBe(404);
-    // 404 must short-circuit before the facade is ever consulted.
+    // 404 must short-circuit before the facade — or the LLM — is ever consulted.
     expect(repoIntel.getBlastRadius).not.toHaveBeenCalled();
+    expect(llm.complete).not.toHaveBeenCalled();
     await app.close();
   });
 

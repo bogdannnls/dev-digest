@@ -207,6 +207,76 @@ describe('projectBlastRadius', () => {
     ]);
   });
 
+  it('does NOT cross-attribute callers/endpoints between two changed symbols that share a bare name in different files (viaFile disambiguation)', () => {
+    const input: BlastResult = {
+      changedSymbols: [
+        { file: 'src/a/util.ts', name: 'run', kind: 'function' },
+        { file: 'src/b/util.ts', name: 'run', kind: 'function' },
+      ],
+      callers: [
+        { file: 'src/a/caller.ts', symbol: 'callA', viaSymbol: 'run', viaFile: 'src/a/util.ts', line: 1, rank: 10 },
+        { file: 'src/b/caller.ts', symbol: 'callB', viaSymbol: 'run', viaFile: 'src/b/util.ts', line: 2, rank: 5 },
+      ],
+      impactedEndpoints: [],
+      factsByFile: {
+        'src/a/caller.ts': { endpoints: ['GET /a'], crons: [] },
+        'src/b/caller.ts': { endpoints: ['GET /b'], crons: [] },
+      },
+      degraded: false,
+    };
+
+    const out = projectBlastRadius(input);
+
+    expect(out.downstream).toEqual([
+      {
+        symbol: 'run',
+        callers: [{ name: 'callA', file: 'src/a/caller.ts', line: 1 }],
+        endpoints_affected: ['GET /a'],
+        crons_affected: [],
+      },
+      {
+        symbol: 'run',
+        callers: [{ name: 'callB', file: 'src/b/caller.ts', line: 2 }],
+        endpoints_affected: ['GET /b'],
+        crons_affected: [],
+      },
+    ]);
+  });
+
+  it('falls back to bare-name grouping when callers omit viaFile (pre-existing fixtures behave unchanged)', () => {
+    const input: BlastResult = {
+      changedSymbols: [
+        { file: 'src/a/util.ts', name: 'run', kind: 'function' },
+        { file: 'src/b/util.ts', name: 'run', kind: 'function' },
+      ],
+      callers: [
+        { file: 'src/caller.ts', symbol: 'callX', viaSymbol: 'run', line: 1, rank: 10 },
+      ],
+      impactedEndpoints: [],
+      factsByFile: {},
+      degraded: false,
+    };
+
+    const out = projectBlastRadius(input);
+
+    // No `viaFile` on the caller → both same-named symbols see it via the bare-name
+    // bucket fallback, matching pre-R2 (over-attribution) behavior exactly.
+    expect(out.downstream).toEqual([
+      {
+        symbol: 'run',
+        callers: [{ name: 'callX', file: 'src/caller.ts', line: 1 }],
+        endpoints_affected: [],
+        crons_affected: [],
+      },
+      {
+        symbol: 'run',
+        callers: [{ name: 'callX', file: 'src/caller.ts', line: 1 }],
+        endpoints_affected: [],
+        crons_affected: [],
+      },
+    ]);
+  });
+
   it('returns an empty structure for fully empty input', () => {
     const input: BlastResult = {
       changedSymbols: [],
@@ -218,5 +288,38 @@ describe('projectBlastRadius', () => {
     const out = projectBlastRadius(input);
 
     expect(out).toEqual({ changed_symbols: [], downstream: [], summary: '' });
+  });
+
+  it('folds 2-hop endpoints (secondHopEndpointsByCallerFile) into the caller symbol, alongside 1-hop facts', () => {
+    const input: BlastResult = {
+      changedSymbols: [{ file: 'src/util/helper.ts', name: 'formatDate', kind: 'function' }],
+      callers: [
+        {
+          file: 'src/service/user-service.ts',
+          symbol: 'getUser',
+          viaSymbol: 'formatDate',
+          viaFile: 'src/util/helper.ts',
+          line: 10,
+          rank: 50,
+        },
+      ],
+      impactedEndpoints: ['GET /users'],
+      // 1-hop caller file has its own endpoint...
+      factsByFile: { 'src/service/user-service.ts': { endpoints: ['GET /internal'], crons: [] } },
+      // ...and a 2-hop file routes GET /users through that caller file.
+      secondHopEndpointsByCallerFile: { 'src/service/user-service.ts': ['GET /users'] },
+      degraded: false,
+    };
+
+    const out = projectBlastRadius(input);
+
+    expect(out.downstream).toEqual([
+      {
+        symbol: 'formatDate',
+        callers: [{ name: 'getUser', file: 'src/service/user-service.ts', line: 10 }],
+        endpoints_affected: ['GET /internal', 'GET /users'], // 1-hop ∪ 2-hop
+        crons_affected: [],
+      },
+    ]);
   });
 });
