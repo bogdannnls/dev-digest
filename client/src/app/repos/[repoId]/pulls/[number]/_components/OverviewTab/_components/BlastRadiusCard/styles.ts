@@ -1,0 +1,142 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for BlastRadiusCard. Uses a distinct teal/sky accent
+    (`--accent-blast`) from IntentCard's violet (`--accent-intent`) so the two
+    Overview cards read as separate surfaces when shown side by side. */
+export const s = {
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    padding: 16,
+    border: "1px solid var(--border, #e5e7eb)",
+    borderLeft: "4px solid var(--accent-blast, #0891b2)",
+    background: "var(--accent-blast-bg, rgba(8, 145, 178, 0.06))",
+    borderRadius: 8,
+  } satisfies CSSProperties,
+  countsRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  counts: {
+    fontSize: 13,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  viewToggle: {
+    display: "inline-flex",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    overflow: "hidden",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  viewToggleBtn: (active: boolean): CSSProperties => ({
+    padding: "4px 12px",
+    fontSize: 12,
+    fontWeight: 500,
+    border: "none",
+    cursor: active ? "default" : "not-allowed",
+    background: active ? "var(--accent-blast-bg, rgba(8, 145, 178, 0.16))" : "transparent",
+    color: active ? "var(--accent-blast, #0891b2)" : "var(--text-muted)",
+  }),
+  symbolList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  } satisfies CSSProperties,
+  symbolNode: {
+    display: "flex",
+    flexDirection: "column",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    background: "var(--bg-elevated)",
+    overflow: "hidden",
+  } satisfies CSSProperties,
+  symbolNodeHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    padding: "8px 10px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    textAlign: "left",
+    font: "inherit",
+    color: "inherit",
+  } satisfies CSSProperties,
+  chevron: {
+    color: "var(--text-muted)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  codeIcon: {
+    color: "var(--accent-blast, #0891b2)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  symbolName: {
+    fontFamily: "var(--font-mono, monospace)",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  symbolMeta: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
+  callerBadge: {
+    flexShrink: 0,
+    padding: "2px 9px",
+    borderRadius: 999,
+    background: "var(--bg-hover)",
+    border: "1px solid var(--border)",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  symbolBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "0 12px 12px 32px",
+  } satisfies CSSProperties,
+  callerList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  } satisfies CSSProperties,
+  callerItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 13,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  callerConnector: {
+    color: "var(--text-muted)",
+    fontSize: 12,
+  } satisfies CSSProperties,
+  callerName: {
+    fontWeight: 500,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  noCallers: {
+    fontSize: 13,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  chipRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  } satisfies CSSProperties,
+} as const;

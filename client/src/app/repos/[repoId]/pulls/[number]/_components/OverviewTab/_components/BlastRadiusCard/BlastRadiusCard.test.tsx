@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { BlastRadius } from "@devdigest/shared";
 import { githubBlobUrl } from "@/lib/github-urls";
-import { BlastTab } from "./BlastTab";
+import { BlastRadiusCard } from "./BlastRadiusCard";
 
 vi.mock("@/lib/hooks/overview", () => ({
   useOverviewBlastRadius: vi.fn(),
@@ -29,7 +29,7 @@ const BLAST_WITH_ROWS: BlastRadius = {
       symbol: "chargeCard",
       callers: [{ name: "handleCheckout", file: "src/checkout/handler.ts", line: 42 }],
       endpoints_affected: ["POST /checkout"],
-      crons_affected: [],
+      crons_affected: ["nightly-reconcile"],
     },
   ],
   summary: "1 changed symbol affects 1 endpoint.",
@@ -41,9 +41,9 @@ const BLAST_EMPTY: BlastRadius = {
   summary: "No changed symbols detected.",
 };
 
-function renderBlastTab(overrides: Partial<React.ComponentProps<typeof BlastTab>> = {}) {
+function renderBlastRadiusCard(overrides: Partial<React.ComponentProps<typeof BlastRadiusCard>> = {}) {
   return render(
-    <BlastTab
+    <BlastRadiusCard
       prId="pr-1"
       repoId="repo-1"
       repoFullName="acme/widgets"
@@ -53,7 +53,7 @@ function renderBlastTab(overrides: Partial<React.ComponentProps<typeof BlastTab>
   );
 }
 
-describe("BlastTab", () => {
+describe("BlastRadiusCard", () => {
   beforeEach(() => {
     resyncMutate.mockClear();
     mockedUseResyncRepoIntel.mockReturnValue({ mutate: resyncMutate, isPending: false });
@@ -62,13 +62,13 @@ describe("BlastTab", () => {
 
   it("renders a skeleton while loading", () => {
     mockedUseOverviewBlastRadius.mockReturnValue({ data: undefined, isLoading: true, isError: false });
-    renderBlastTab();
-    expect(screen.getByTestId("blast-loading")).toBeInTheDocument();
+    renderBlastRadiusCard();
+    expect(screen.getByTestId("blast-radius-loading")).toBeInTheDocument();
   });
 
   it("renders an error state when the query fails", () => {
     mockedUseOverviewBlastRadius.mockReturnValue({ data: undefined, isLoading: false, isError: true });
-    renderBlastTab();
+    renderBlastRadiusCard();
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByText(/couldn't load the blast radius/i)).toBeInTheDocument();
   });
@@ -80,7 +80,7 @@ describe("BlastTab", () => {
       isLoading: false,
       isError: false,
     });
-    renderBlastTab();
+    renderBlastRadiusCard();
 
     expect(screen.getByText("Repo index isn't built yet")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /resync repo index/i }));
@@ -93,28 +93,45 @@ describe("BlastTab", () => {
       isLoading: false,
       isError: false,
     });
-    renderBlastTab();
+    renderBlastRadiusCard();
 
     expect(screen.getByText("Indexed — no downstream impact detected")).toBeInTheDocument();
     expect(screen.queryByText("Repo index isn't built yet")).not.toBeInTheDocument();
   });
 
-  it("ready + rows: renders the layered map with an exact caller href and endpoint chips", () => {
+  it("ready + rows: renders the counts row, an expandable symbol node with caller link, and endpoint + cron chips", async () => {
+    const user = userEvent.setup();
     mockedUseOverviewBlastRadius.mockReturnValue({
       data: { status: "ready", data: BLAST_WITH_ROWS },
       isLoading: false,
       isError: false,
     });
-    renderBlastTab();
+    renderBlastRadiusCard();
 
-    expect(screen.getByText("chargeCard")).toBeInTheDocument();
+    // Counts row: 1 symbol, 1 caller, 1 endpoint, 1 cron.
+    expect(screen.getByTestId("blast-counts")).toHaveTextContent(
+      "1 symbol · 1 caller · 1 endpoint · 1 cron",
+    );
 
+    // Symbol node is expanded by default (it has >=1 caller) — caller link visible immediately.
     const callerLink = screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i });
     expect(callerLink).toHaveAttribute(
       "href",
       githubBlobUrl("acme/widgets", "abc123", "src/checkout/handler.ts", 42),
     );
+    expect(screen.getByText("POST /checkout")).toBeInTheDocument();
+    expect(screen.getByText("nightly-reconcile")).toBeInTheDocument();
 
+    // Collapse the node — the caller row disappears.
+    const nodeHeader = screen.getByRole("button", { name: /chargeCard/i });
+    await user.click(nodeHeader);
+    expect(
+      screen.queryByRole("link", { name: /src\/checkout\/handler\.ts:42/i }),
+    ).not.toBeInTheDocument();
+
+    // Expand it again — the caller row (and chips) reappear.
+    await user.click(nodeHeader);
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).toBeInTheDocument();
     expect(screen.getByText("POST /checkout")).toBeInTheDocument();
   });
 
@@ -124,7 +141,7 @@ describe("BlastTab", () => {
       isLoading: false,
       isError: false,
     });
-    renderBlastTab({ repoFullName: null, headSha: null });
+    renderBlastRadiusCard({ repoFullName: null, headSha: null });
 
     expect(screen.queryByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).not.toBeInTheDocument();
     expect(screen.getByText("src/checkout/handler.ts:42")).toBeInTheDocument();
@@ -138,7 +155,7 @@ describe("BlastTab", () => {
       isLoading: false,
       isError: false,
     });
-    renderBlastTab();
+    renderBlastRadiusCard();
 
     expect(
       screen.getByText("Repo index is partial — some callers or endpoints may be missing."),
@@ -161,14 +178,14 @@ describe("BlastTab", () => {
     let identity: { lastIndexedSha: string; updatedAt: string } = { lastIndexedSha: "sha0", updatedAt: "t0" };
     mockedUseRepoIntelStatus.mockImplementation(() => ({ data: identity }));
 
-    const { rerender } = renderBlastTab();
+    const { rerender } = renderBlastRadiusCard();
     await user.click(screen.getByRole("button", { name: /resync repo index/i }));
     expect(resyncMutate).toHaveBeenCalledTimes(1);
     expect(refetch).not.toHaveBeenCalled(); // identity unchanged → no premature refetch
 
     // Simulate the poll observing the rebuilt index.
     identity = { lastIndexedSha: "sha1", updatedAt: "t1" };
-    rerender(<BlastTab prId="pr-1" repoId="repo-1" repoFullName="acme/widgets" headSha="abc123" />);
+    rerender(<BlastRadiusCard prId="pr-1" repoId="repo-1" repoFullName="acme/widgets" headSha="abc123" />);
 
     expect(refetch).toHaveBeenCalled();
   });
