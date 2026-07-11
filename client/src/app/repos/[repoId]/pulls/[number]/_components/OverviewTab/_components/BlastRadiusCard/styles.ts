@@ -25,6 +25,11 @@ export const s = {
     fontSize: 13,
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
+  summary: {
+    margin: 0,
+    fontSize: 13,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
   viewToggle: {
     display: "inline-flex",
     border: "1px solid var(--border)",
@@ -132,6 +137,23 @@ export const s = {
   } satisfies CSSProperties,
   noCallers: {
     fontSize: 13,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  testCallers: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  } satisfies CSSProperties,
+  testCallersToggle: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: 0,
+    border: "none",
+    background: "none",
+    cursor: "pointer",
+    font: "inherit",
+    fontSize: 12,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
   chipRow: {

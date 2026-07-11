@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { BlastRadius } from "@devdigest/shared";
 import { githubBlobUrl } from "@/lib/github-urls";
+import { repoBlobUrl } from "@/lib/repo-source-urls";
 import { BlastRadiusCard } from "./BlastRadiusCard";
 
 vi.mock("@/lib/hooks/overview", () => ({
@@ -41,6 +42,88 @@ const BLAST_EMPTY: BlastRadius = {
   summary: "No changed symbols detected.",
 };
 
+// C2 fixture: sort by endpoints desc, then callers desc, then name asc.
+// "highEndpoint" (2 endpoints) must lead; "midCallers" (0 endpoints, 3 callers)
+// is second; "alpha"/"zebra" tie on counts (0/0) and break alphabetically,
+// even though "zebra" appears first in the raw (unsorted) array.
+const BLAST_SORT_FIXTURE: BlastRadius = {
+  changed_symbols: [
+    { name: "zebra", file: "src/z.ts", kind: "function" },
+    { name: "highEndpoint", file: "src/b.ts", kind: "function" },
+    { name: "alpha", file: "src/a.ts", kind: "function" },
+    { name: "midCallers", file: "src/c.ts", kind: "function" },
+  ],
+  downstream: [
+    { symbol: "zebra", callers: [], endpoints_affected: [], crons_affected: [] },
+    {
+      symbol: "highEndpoint",
+      callers: [],
+      endpoints_affected: ["EP1", "EP2"],
+      crons_affected: [],
+    },
+    { symbol: "alpha", callers: [], endpoints_affected: [], crons_affected: [] },
+    {
+      symbol: "midCallers",
+      callers: [
+        { name: "c1", file: "src/c1.ts", line: 1 },
+        { name: "c2", file: "src/c2.ts", line: 2 },
+        { name: "c3", file: "src/c3.ts", line: 3 },
+      ],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+  ],
+  summary: "",
+};
+
+// C2 regression fixture: two changed symbols share a name ("process") but come
+// from different files with different downstream data. Index-pairing must keep
+// them distinct; a `.find((d) => d.symbol === symbol.name)` lookup would show
+// the FIRST match's callers ("callerA") under both nodes.
+const BLAST_DUP_NAME_FIXTURE: BlastRadius = {
+  changed_symbols: [
+    { name: "process", file: "src/a.ts", kind: "function" },
+    { name: "process", file: "src/b.ts", kind: "function" },
+  ],
+  downstream: [
+    {
+      symbol: "process",
+      callers: [{ name: "callerA", file: "src/callerA.ts", line: 1 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+    {
+      symbol: "process",
+      callers: [{ name: "callerB", file: "src/callerB.ts", line: 2 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+  ],
+  summary: "",
+};
+
+// C3 fixture: a mix of prod callers (incl. two NEGATIVE cases that must NOT be
+// treated as test files — `contest.ts`, `src/testing.ts`) and test callers
+// (`.test.ts` suffix + `__tests__/` directory + `.spec.tsx` suffix).
+const BLAST_TEST_CALLERS_FIXTURE: BlastRadius = {
+  changed_symbols: [{ name: "chargeCard", file: "src/billing/charge.ts", kind: "function" }],
+  downstream: [
+    {
+      symbol: "chargeCard",
+      callers: [
+        { name: "handleCheckout", file: "src/checkout/handler.ts", line: 10 },
+        { name: "contestHandler", file: "src/contest.ts", line: 5 },
+        { name: "testingUtilCaller", file: "src/testing.ts", line: 7 },
+        { name: "chargeCardTest", file: "src/billing/charge.test.ts", line: 20 },
+        { name: "chargeCardSpec", file: "src/billing/__tests__/charge.spec.tsx", line: 3 },
+      ],
+      endpoints_affected: [],
+      crons_affected: [],
+    },
+  ],
+  summary: "",
+};
+
 function renderBlastRadiusCard(overrides: Partial<React.ComponentProps<typeof BlastRadiusCard>> = {}) {
   return render(
     <BlastRadiusCard
@@ -48,6 +131,7 @@ function renderBlastRadiusCard(overrides: Partial<React.ComponentProps<typeof Bl
       repoId="repo-1"
       repoFullName="acme/widgets"
       headSha="abc123"
+      provider="github"
       {...overrides}
     />,
   );
@@ -147,6 +231,129 @@ describe("BlastRadiusCard", () => {
     expect(screen.getByText("src/checkout/handler.ts:42")).toBeInTheDocument();
   });
 
+  it("(C1) provider-aware caller links: bitbucket uses /src/<sha>/...#lines-N, github uses /blob/<sha>/...#LN, and no provider means no link", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_WITH_ROWS },
+      isLoading: false,
+      isError: false,
+    });
+
+    const { rerender } = renderBlastRadiusCard({ provider: "bitbucket" });
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).toHaveAttribute(
+      "href",
+      repoBlobUrl("bitbucket", "acme/widgets", "abc123", "src/checkout/handler.ts", 42),
+    );
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).toHaveAttribute(
+      "href",
+      "https://bitbucket.org/acme/widgets/src/abc123/src/checkout/handler.ts#lines-42",
+    );
+
+    rerender(
+      <BlastRadiusCard
+        prId="pr-1"
+        repoId="repo-1"
+        repoFullName="acme/widgets"
+        headSha="abc123"
+        provider="github"
+      />,
+    );
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/widgets/blob/abc123/src/checkout/handler.ts#L42",
+    );
+
+    rerender(
+      <BlastRadiusCard
+        prId="pr-1"
+        repoId="repo-1"
+        repoFullName="acme/widgets"
+        headSha="abc123"
+        provider={null}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).not.toBeInTheDocument();
+    expect(screen.getByText("src/checkout/handler.ts:42")).toBeInTheDocument();
+  });
+
+  it("(C2) sorts symbol nodes by endpoints affected desc, then callers desc, then name asc", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_SORT_FIXTURE },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    const names = screen.getAllByTestId("blast-symbol-name").map((el) => el.textContent);
+    expect(names).toEqual(["highEndpoint", "midCallers", "alpha", "zebra"]);
+  });
+
+  it("(C2) keeps duplicate-named symbols as two distinct nodes with their own downstream data (index-paired, not name-matched)", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_DUP_NAME_FIXTURE },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    expect(screen.getAllByTestId("blast-symbol-name")).toHaveLength(2);
+    // Both distinct callers must be visible — a `.find()`-by-name bug would show
+    // "callerA" (the first match) under both "process" nodes and never render "callerB".
+    expect(screen.getByText("callerA")).toBeInTheDocument();
+    expect(screen.getByText("callerB")).toBeInTheDocument();
+  });
+
+  it("(C3) collapses test-file callers behind an expandable sub-row; negative heuristic cases stay in the prod list", async () => {
+    const user = userEvent.setup();
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_TEST_CALLERS_FIXTURE },
+      isLoading: false,
+      isError: false,
+    });
+    renderBlastRadiusCard();
+
+    // Prod callers render immediately, INCLUDING the two negative cases that must
+    // NOT be classified as test files despite containing "test"/"contest" substrings.
+    expect(screen.getByText("handleCheckout")).toBeInTheDocument();
+    expect(screen.getByText("contestHandler")).toBeInTheDocument();
+    expect(screen.getByText("testingUtilCaller")).toBeInTheDocument();
+
+    // Test callers are collapsed by default — not in the DOM yet.
+    expect(screen.queryByText("chargeCardTest")).not.toBeInTheDocument();
+    expect(screen.queryByText("chargeCardSpec")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /2 test callers/i });
+
+    // Expanding reveals all test callers.
+    await user.click(toggle);
+    expect(screen.getByText("chargeCardTest")).toBeInTheDocument();
+    expect(screen.getByText("chargeCardSpec")).toBeInTheDocument();
+  });
+
+  it("(C4) renders the summary paragraph when non-empty, and renders nothing for an empty summary", () => {
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_WITH_ROWS },
+      isLoading: false,
+      isError: false,
+    });
+    const { rerender } = renderBlastRadiusCard();
+    expect(screen.getByText("1 changed symbol affects 1 endpoint.")).toBeInTheDocument();
+
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: { ...BLAST_WITH_ROWS, summary: "" } },
+      isLoading: false,
+      isError: false,
+    });
+    rerender(
+      <BlastRadiusCard
+        prId="pr-1"
+        repoId="repo-1"
+        repoFullName="acme/widgets"
+        headSha="abc123"
+        provider="github"
+      />,
+    );
+    expect(screen.queryByText("1 changed symbol affects 1 endpoint.")).not.toBeInTheDocument();
+  });
+
   it("degraded + rows: maps the reason ENUM to human copy AND still renders caller rows (degraded must not hide rows)", () => {
     // The server always sends a machine enum (e.g. "index_partial"), never a sentence —
     // the badge must map it to human copy, not render the raw enum.
@@ -185,7 +392,15 @@ describe("BlastRadiusCard", () => {
 
     // Simulate the poll observing the rebuilt index.
     identity = { lastIndexedSha: "sha1", updatedAt: "t1" };
-    rerender(<BlastRadiusCard prId="pr-1" repoId="repo-1" repoFullName="acme/widgets" headSha="abc123" />);
+    rerender(
+      <BlastRadiusCard
+        prId="pr-1"
+        repoId="repo-1"
+        repoFullName="acme/widgets"
+        headSha="abc123"
+        provider="github"
+      />,
+    );
 
     expect(refetch).toHaveBeenCalled();
   });

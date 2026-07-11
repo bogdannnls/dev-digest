@@ -145,6 +145,7 @@ export default function PRDetailPage() {
             repoId={repoId}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            provider={activeRepo?.provider ?? null}
           />
         )}
 

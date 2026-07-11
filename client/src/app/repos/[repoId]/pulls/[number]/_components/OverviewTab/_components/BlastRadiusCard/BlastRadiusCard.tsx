@@ -11,10 +11,10 @@
 
 import React from "react";
 import { Icon, Skeleton, ErrorState, EmptyState, Badge, Chip, SectionLabel, MonoLink } from "@devdigest/ui";
-import type { ChangedSymbol, DownstreamImpact } from "@devdigest/shared";
+import type { BlastCaller, BlastRadius, ChangedSymbol, DownstreamImpact, RepoProvider } from "@devdigest/shared";
 import { useOverviewBlastRadius } from "@/lib/hooks/overview";
 import { useResyncRepoIntel, useRepoIntelStatus } from "@/lib/hooks/repo-intel";
-import { githubBlobUrl } from "@/lib/github-urls";
+import { repoBlobUrl } from "@/lib/repo-source-urls";
 import { s } from "./styles";
 
 /** Server `DegradedReason` enum → human copy for the reason badge. The server always
@@ -32,11 +32,51 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** Test-authored caller — matches `foo.test.ts(x)`/`foo.spec.ts(x)` or any path
+    under a `__tests__/` directory. Deliberately narrow: `contest.ts` and
+    `src/testing.ts` must NOT match — only the `.test.`/`.spec.` suffix
+    convention or the dedicated directory count as test code. */
+function isTestPath(path: string): boolean {
+  return /\.(test|spec)\.[jt]sx?$/.test(path) || /(^|\/)__tests__\//.test(path);
+}
+
+interface SymbolDownstreamPair {
+  key: string;
+  symbol: ChangedSymbol;
+  downstream: DownstreamImpact | undefined;
+}
+
+/** Pair each changed symbol with its downstream impact by ARRAY INDEX — the
+    server projection guarantees `changed_symbols[i]` corresponds to
+    `downstream[i]`. A `.find((d) => d.symbol === symbol.name)` lookup breaks
+    silently when two changed symbols share a name (e.g. overloaded functions
+    in different files): both would resolve to whichever entry `.find()` hits
+    first. Sort the paired rows by blast size — most endpoints affected first,
+    then most callers, then symbol name — so the highest-impact change leads.
+    The `key` embeds the pre-sort index so duplicate-named symbols still get
+    distinct, stable React keys after sorting reorders them. */
+function pairAndSortSymbols(blast: BlastRadius): SymbolDownstreamPair[] {
+  const pairs = blast.changed_symbols.map((symbol, i) => ({
+    key: `${symbol.file}:${symbol.name}:${i}`,
+    symbol,
+    downstream: blast.downstream[i],
+  }));
+  return pairs.sort((a, b) => {
+    const endpointsDiff =
+      (b.downstream?.endpoints_affected.length ?? 0) - (a.downstream?.endpoints_affected.length ?? 0);
+    if (endpointsDiff !== 0) return endpointsDiff;
+    const callersDiff = (b.downstream?.callers.length ?? 0) - (a.downstream?.callers.length ?? 0);
+    if (callersDiff !== 0) return callersDiff;
+    return a.symbol.name.localeCompare(b.symbol.name);
+  });
+}
+
 interface BlastRadiusCardProps {
   prId: string | null;
   repoId: string;
   repoFullName: string | null;
   headSha: string | null;
+  provider: RepoProvider | null;
 }
 
 /** Tree | Graph segmented control. Graph mode is v2 (spec §7) — rendered
@@ -62,20 +102,97 @@ function ViewToggle() {
   );
 }
 
+function CallerRow({
+  caller,
+  repoFullName,
+  headSha,
+  provider,
+}: {
+  caller: BlastCaller;
+  repoFullName: string | null;
+  headSha: string | null;
+  provider: RepoProvider | null;
+}) {
+  const fileHref =
+    provider && repoFullName && headSha
+      ? repoBlobUrl(provider, repoFullName, headSha, caller.file, caller.line)
+      : undefined;
+  return (
+    <li style={s.callerItem}>
+      <span style={s.callerConnector}>↳</span>
+      <span style={s.callerName}>{caller.name}</span>
+      <MonoLink href={fileHref}>
+        {caller.file}:{caller.line}
+      </MonoLink>
+    </li>
+  );
+}
+
+/** Collapsed-by-default sub-row for test-authored callers — de-emphasized so
+    the prod caller list (the actionable signal) isn't diluted by test fixture
+    noise, while keeping the data reachable rather than dropping it silently. */
+function TestCallersRow({
+  callers,
+  repoFullName,
+  headSha,
+  provider,
+}: {
+  callers: BlastCaller[];
+  repoFullName: string | null;
+  headSha: string | null;
+  provider: RepoProvider | null;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const Chevron = expanded ? Icon.ChevronDown : Icon.ChevronRight;
+  return (
+    <div style={s.testCallers}>
+      <button
+        type="button"
+        style={s.testCallersToggle}
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+      >
+        <Chevron size={12} style={s.chevron} />
+        {plural(callers.length, "test caller")}
+      </button>
+      {expanded && (
+        <ul style={s.callerList}>
+          {callers.map((c) => (
+            <CallerRow
+              key={`${c.file}:${c.line}:${c.name}`}
+              caller={c}
+              repoFullName={repoFullName}
+              headSha={headSha}
+              provider={provider}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SymbolNode({
   symbol,
   downstream,
   repoFullName,
   headSha,
+  provider,
 }: {
   symbol: ChangedSymbol;
   downstream: DownstreamImpact | undefined;
   repoFullName: string | null;
   headSha: string | null;
+  provider: RepoProvider | null;
 }) {
   const callers = downstream?.callers ?? [];
   const endpoints = downstream?.endpoints_affected ?? [];
   const crons = downstream?.crons_affected ?? [];
+  // Split callers so test-authored ones can render behind a de-emphasized,
+  // collapsed sub-row — the header badge below and the top counts row both
+  // keep the TOTAL caller count; nothing is dropped, only visually deferred.
+  const prodCallers = callers.filter((c) => !isTestPath(c.file));
+  const testCallers = callers.filter((c) => isTestPath(c.file));
   // Expand by default when the symbol has ANY downstream signal — a framework-invoked
   // route handler can have 0 static callers but still carry the highest-value data
   // (affected endpoints/crons), which must not be hidden behind a "0 callers" header.
@@ -94,7 +211,9 @@ function SymbolNode({
       >
         <Chevron size={14} style={s.chevron} />
         <Icon.Code size={14} style={s.codeIcon} />
-        <span style={s.symbolName}>{symbol.name}</span>
+        <span style={s.symbolName} data-testid="blast-symbol-name">
+          {symbol.name}
+        </span>
         <span style={s.symbolMeta}>
           {symbol.kind} · {symbol.file}
         </span>
@@ -103,24 +222,31 @@ function SymbolNode({
 
       {expanded && (
         <div style={s.symbolBody}>
-          {callers.length > 0 ? (
+          {prodCallers.length > 0 && (
             <ul style={s.callerList}>
-              {callers.map((c) => {
-                const fileHref =
-                  repoFullName && headSha ? githubBlobUrl(repoFullName, headSha, c.file, c.line) : undefined;
-                return (
-                  <li key={`${c.file}:${c.line}:${c.name}`} style={s.callerItem}>
-                    <span style={s.callerConnector}>↳</span>
-                    <span style={s.callerName}>{c.name}</span>
-                    <MonoLink href={fileHref}>
-                      {c.file}:{c.line}
-                    </MonoLink>
-                  </li>
-                );
-              })}
+              {prodCallers.map((c) => (
+                <CallerRow
+                  key={`${c.file}:${c.line}:${c.name}`}
+                  caller={c}
+                  repoFullName={repoFullName}
+                  headSha={headSha}
+                  provider={provider}
+                />
+              ))}
             </ul>
-          ) : (
+          )}
+
+          {prodCallers.length === 0 && testCallers.length === 0 && (
             <div style={s.noCallers}>No callers found.</div>
+          )}
+
+          {testCallers.length > 0 && (
+            <TestCallersRow
+              callers={testCallers}
+              repoFullName={repoFullName}
+              headSha={headSha}
+              provider={provider}
+            />
           )}
 
           {endpoints.length > 0 && (
@@ -148,7 +274,7 @@ function SymbolNode({
   );
 }
 
-export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRadiusCardProps) {
+export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider }: BlastRadiusCardProps) {
   const { data, isLoading, isError, refetch } = useOverviewBlastRadius(prId);
   const resync = useResyncRepoIntel(repoId);
   // While a user-initiated resync is running, poll the index state so the
@@ -259,6 +385,8 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
     );
   }
 
+  const symbolPairs = pairAndSortSymbols(blast);
+
   return (
     <section>
       <SectionLabel icon="Workflow">Blast radius</SectionLabel>
@@ -271,6 +399,8 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
           <ViewToggle />
         </div>
 
+        {blast.summary ? <p style={s.summary}>{blast.summary}</p> : null}
+
         {status === "degraded" && (
           <Badge icon="AlertTriangle" color="var(--warn, #d97706)" bg="var(--warn-bg, #3a2a05)">
             {(reason && DEGRADED_REASON_COPY[reason]) ?? "Partial index — results may be incomplete."}
@@ -278,13 +408,14 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha }: BlastRa
         )}
 
         <div style={s.symbolList}>
-          {blast.changed_symbols.map((symbol) => (
+          {symbolPairs.map(({ key, symbol, downstream }) => (
             <SymbolNode
-              key={`${symbol.file}:${symbol.name}`}
+              key={key}
               symbol={symbol}
-              downstream={blast.downstream.find((d) => d.symbol === symbol.name)}
+              downstream={downstream}
               repoFullName={repoFullName}
               headSha={headSha}
+              provider={provider}
             />
           ))}
         </div>
