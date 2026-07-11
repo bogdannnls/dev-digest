@@ -174,7 +174,7 @@ const FIX_RESULT_SCHEMA = {
 
 const MAX_VERIFY_WAVES = 2 // initial verify + at most one retry-and-reverify round
 const MAX_FIX_ITERATIONS = 2 // bounded MUST-fix loop
-const SUBSTANTIAL_FIX_THRESHOLD = 3 // total MUST findings fixed before re-running plan-verifier
+const SUBSTANTIAL_FIX_THRESHOLD = 3 // total MUST-fix attempts before re-running plan-verifier
 
 const workflowArgs = typeof args === 'undefined' ? {} : args || {}
 
@@ -354,21 +354,35 @@ async function implementTasks(tasks, mode, planPath, contextDigest) {
   if (tasks.length === 0) return []
 
   if (mode === 'multi') {
-    const overlapping = findOverlappingTaskIds(tasks)
-    const thunks = tasks.map(task => () =>
-      agent(buildImplementPrompt(task, planPath, contextDigest), {
-        agentType: 'implementer',
-        model: 'sonnet',
-        label: `implement:${task.id}`,
-        phase: 'Implement',
-        schema: TASK_OUTCOME_SCHEMA,
-        ...(overlapping.has(task.id) ? { isolation: 'worktree' } : {}),
-      })
-    )
-    return parallel(thunks)
+    // Wave computation lives HERE (single source of truth) so every caller —
+    // Phase 1 and the verify-gate retry alike — honors dependency ordering.
+    // Tasks are dispatched wave-by-wave: a task never runs concurrently with
+    // one it depends_on, even when this helper receives an arbitrary subset
+    // (e.g. a retry set). Within a wave, disjoint files_to_touch is the
+    // planner's guarantee; findOverlappingTaskIds is the safety net that
+    // isolates any wave-mate whose files collide.
+    const waves = computeWaves(tasks)
+    const results = []
+    for (let i = 0; i < waves.length; i++) {
+      const wave = waves[i]
+      log(`Implement wave ${i + 1}/${waves.length}: ${wave.map(t => t.id).join(', ')}`)
+      const overlapping = findOverlappingTaskIds(wave)
+      const thunks = wave.map(task => () =>
+        agent(buildImplementPrompt(task, planPath, contextDigest), {
+          agentType: 'implementer',
+          model: 'sonnet',
+          label: `implement:${task.id}`,
+          phase: 'Implement',
+          schema: TASK_OUTCOME_SCHEMA,
+          ...(overlapping.has(task.id) ? { isolation: 'worktree' } : {}),
+        })
+      )
+      results.push(...(await parallel(thunks)))
+    }
+    return results
   }
 
-  // single = sequential dispatch, one task at a time.
+  // single = strictly sequential dispatch, one task at a time.
   const results = []
   for (const task of tasks) {
     results.push(
@@ -437,17 +451,16 @@ phase('Implement')
 let implementResults = []
 
 if (preflight.executionMode === 'multi') {
-  const waves = computeWaves(preflight.tasks)
-  log(`Multi-agent mode: ${waves.length} dependency wave(s).`)
-  for (let i = 0; i < waves.length; i++) {
-    log(`Implement wave ${i + 1}/${waves.length}: ${waves[i].map(t => t.id).join(', ')}`)
-    const waveResults = await implementTasks(waves[i], 'multi', preflight.planPath, preflight.contextDigest)
-    implementResults.push(...waveResults)
-  }
+  log(`Multi-agent mode: dispatching ${preflight.tasks.length} task(s) wave-by-wave.`)
 } else {
   log(`Single-agent mode: ${preflight.tasks.length} task(s), sequential dispatch.`)
-  implementResults = await implementTasks(preflight.tasks, 'single', preflight.planPath, preflight.contextDigest)
 }
+implementResults = await implementTasks(
+  preflight.tasks,
+  preflight.executionMode,
+  preflight.planPath,
+  preflight.contextDigest
+)
 
 // ---------------------------------------------------------------------------
 // Phase 2 — Verify (gate), runs BEFORE review
@@ -456,7 +469,10 @@ if (preflight.executionMode === 'multi') {
 phase('Verify')
 
 let verifyRound = 0
-let latestVerdicts = []
+// Merge verdicts across rounds so a task that passed in round 1 but wasn't
+// re-verified in a later retry round keeps its `met` verdict in the report,
+// rather than being dropped because `tasksInScope` narrowed to the retry subset.
+const verdictByTaskId = new Map()
 let tasksInScope = preflight.tasks.map(t => t.id)
 
 while (verifyRound < MAX_VERIFY_WAVES) {
@@ -470,9 +486,10 @@ while (verifyRound < MAX_VERIFY_WAVES) {
     schema: VERDICT_SCHEMA,
   })
 
-  latestVerdicts = verdictResult?.taskVerdicts ?? []
-  const unresolved = latestVerdicts.filter(v => v.verdict !== 'met')
-  log(`Verify wave ${verifyRound}: ${latestVerdicts.length - unresolved.length}/${latestVerdicts.length} met.`)
+  const roundVerdicts = verdictResult?.taskVerdicts ?? []
+  for (const v of roundVerdicts) verdictByTaskId.set(v.taskId, v) // latest wins per task
+  const unresolved = roundVerdicts.filter(v => v.verdict !== 'met')
+  log(`Verify wave ${verifyRound}: ${roundVerdicts.length - unresolved.length}/${roundVerdicts.length} met.`)
 
   if (unresolved.length === 0) break
   if (verifyRound >= MAX_VERIFY_WAVES) {
@@ -489,6 +506,21 @@ while (verifyRound < MAX_VERIFY_WAVES) {
   )
   implementResults.push(...retryResults)
   tasksInScope = retryTasks.map(t => t.id)
+}
+
+// Build the merged verdict list in plan-task order, appending any verdicts for
+// ids not present in the plan (defensive — shouldn't happen in practice).
+const mergedVerdicts = []
+const seenTaskIds = new Set()
+for (const t of preflight.tasks) {
+  const v = verdictByTaskId.get(t.id)
+  if (v) {
+    mergedVerdicts.push(v)
+    seenTaskIds.add(t.id)
+  }
+}
+for (const [taskId, v] of verdictByTaskId) {
+  if (!seenTaskIds.has(taskId)) mergedVerdicts.push(v)
 }
 
 // ---------------------------------------------------------------------------
@@ -594,12 +626,19 @@ while (mustFindings.length > 0 && fixIteration < MAX_FIX_ITERATIONS) {
   mustFindings = (recheck?.findings ?? []).filter(f => f.severity === 'MUST')
 }
 
-const totalMustFindingsFixed = fixes.reduce((sum, f) => sum + f.findingsAddressed.length, 0)
-const fixesWereSubstantial = totalMustFindingsFixed >= SUBSTANTIAL_FIX_THRESHOLD
+// Counts fix ATTEMPTS (findings handed to the implementer, summed across
+// iterations), not distinct findings resolved — a finding retried in both
+// iterations counts twice. Used only as a coarse "were the fixes substantial?"
+// signal to decide whether to re-run plan-verifier; it does not gate control flow.
+const totalFixAttempts = fixes.reduce((sum, f) => sum + f.findingsAddressed.length, 0)
+const fixesWereSubstantial = totalFixAttempts >= SUBSTANTIAL_FIX_THRESHOLD
 
 let postFixVerify = null
 if (fixes.length > 0 && fixesWereSubstantial) {
-  log(`Fixes were substantial (${totalMustFindingsFixed} MUST findings addressed) — re-running plan-verifier.`)
+  log(
+    `Fixes were substantial (${totalFixAttempts} MUST-fix attempt(s) across ${fixes.length} ` +
+      `iteration(s)) — re-running plan-verifier.`
+  )
   postFixVerify = await agent(buildVerifyPrompt(preflight.planPath, preflight.tasks), {
     agentType: 'plan-verifier',
     model: 'sonnet',
@@ -619,7 +658,7 @@ return {
   implemented: implementResults,
   verify: {
     rounds: verifyRound,
-    verdicts: latestVerdicts,
+    verdicts: mergedVerdicts,
     postFix: postFixVerify,
   },
   review: {
@@ -629,6 +668,6 @@ return {
   fixes,
   remaining: {
     unresolvedMustFindings: mustFindings,
-    unmetOrPartialTasks: latestVerdicts.filter(v => v.verdict !== 'met'),
+    unmetOrPartialTasks: mergedVerdicts.filter(v => v.verdict !== 'met'),
   },
 }
