@@ -83,6 +83,14 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  /**
+   * Per-document token-count estimate for each entry in `specs_read` (L05
+   * T4, AC-26). Index-aligned with `specs_read` — same length and order;
+   * `specs_tokens[i]` is the token count for `specs_read[i]`. Additive and
+   * nullish so existing traces (`undefined`/absent) stay valid; do NOT widen
+   * `specs_read`'s element type to carry this instead.
+   */
+  specs_tokens: z.array(z.number().int()).nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

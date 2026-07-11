@@ -64,3 +64,49 @@ describe('assemblePrompt — ## PR description', () => {
     expect((assembly.pr_description as string).length).toBe(4000);
   });
 });
+
+describe('assemblePrompt — ## Project context (specs, L05 T4)', () => {
+  it('renders each spec in effective-set order, wrapped as untrusted (AC-23)', () => {
+    const { messages, assembly } = assemblePrompt({
+      system: 'sys',
+      diff: 'DIFF',
+      specs: ['FIRST spec content', 'SECOND spec content', 'THIRD spec content'],
+    });
+    const user = messages[1]!.content;
+    expect(user).toContain('## Project context');
+    expect(user).toContain('<untrusted source="spec-0">');
+    expect(user).toContain('<untrusted source="spec-1">');
+    expect(user).toContain('<untrusted source="spec-2">');
+    expect(user).toContain('FIRST spec content');
+    expect(user).toContain('SECOND spec content');
+    expect(user).toContain('THIRD spec content');
+    // Order preserved.
+    expect(user.indexOf('FIRST spec content')).toBeLessThan(user.indexOf('SECOND spec content'));
+    expect(user.indexOf('SECOND spec content')).toBeLessThan(user.indexOf('THIRD spec content'));
+    // The trace-facing assembly also carries the wrapped block.
+    expect(assembly.specs).toContain('<untrusted source="spec-0">');
+    expect(assembly.specs).toContain('FIRST spec content');
+  });
+
+  it('omits the section entirely when specs is empty or undefined (AC-24)', () => {
+    expect(userOf({ system: 'sys', diff: 'DIFF' })).not.toContain('## Project context');
+    expect(assemblePrompt({ system: 'sys', diff: 'DIFF' }).assembly.specs ?? null).toBeNull();
+    expect(userOf({ system: 'sys', diff: 'DIFF', specs: [] })).not.toContain('## Project context');
+    expect(assemblePrompt({ system: 'sys', diff: 'DIFF', specs: [] }).assembly.specs ?? null).toBeNull();
+  });
+
+  it('passes a very large combined specs payload through with no truncation or rejection (AC-28)', () => {
+    // No token-budget cap in v1 (spec Non-goals) — a huge attached-document
+    // set must be assembled in full, unlike the PR-description slot which IS
+    // capped at 4k chars.
+    const huge = 'y'.repeat(500_000);
+    const { assembly } = assemblePrompt({
+      system: 'sys',
+      diff: 'D',
+      specs: [huge, huge, huge],
+    });
+    // Each huge block survives whole (no slicing), plus wrapper overhead.
+    expect((assembly.specs as string).length).toBeGreaterThanOrEqual(huge.length * 3);
+    expect(assembly.specs).toContain(huge);
+  });
+});
