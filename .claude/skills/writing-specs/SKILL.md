@@ -61,7 +61,7 @@ Paste this template verbatim as the skeleton of every new spec (source: design d
 ```
 # Spec: <feature> | Spec ID: SPEC-NN | Status: draft|approved|implemented
 Supersedes: <link or —>
-Modules: server|client|reviewer-core|e2e|cross-cutting
+Modules: server|client|reviewer-core|mcp|e2e|cross-cutting
 
 ## Problem & why
 ## Goals / Non-goals
