@@ -214,6 +214,13 @@ d('GET /pulls/:id/overview/blast-radius', () => {
   });
 
   it('degraded + empty: empty changed_symbols/downstream while status + reason still surface', async () => {
+    // Must seed a changed file so the request reaches the facade (an empty file set is
+    // short-circuited to ready-empty before the facade is consulted). This case models a
+    // repo WITH changed files but a missing/degraded index.
+    await pg.handle.db.insert(t.prFiles).values([
+      { prId, path: 'src/util/helper.ts', additions: 1, deletions: 0 },
+    ]);
+
     const result: BlastResult = {
       changedSymbols: [],
       callers: [],
@@ -232,6 +239,30 @@ d('GET /pulls/:id/overview/blast-radius', () => {
     expect(body.reason).toBe('no_data');
     expect(body.data.changed_symbols).toEqual([]);
     expect(body.data.downstream).toEqual([]);
+    await app.close();
+  });
+
+  it('no changed files (0-file merge PR): short-circuits to ready-empty WITHOUT consulting the facade', async () => {
+    // beforeEach creates the PR but inserts no prFiles rows → getChangedFilePaths() === [].
+    // The facade WOULD report degraded/no_data for an empty input set; the service must
+    // short-circuit before reaching it so a 0-file PR is not misreported as "index missing".
+    const repoIntel = makeRepoIntelStub({
+      changedSymbols: [],
+      callers: [],
+      impactedEndpoints: [],
+      degraded: true,
+      reason: 'no_data',
+    });
+    const app = await makeApp(repoIntel);
+
+    const res = await app.inject({ method: 'GET', url: `/pulls/${prId}/overview/blast-radius` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.status).toBe('ready');
+    expect(body.reason).toBeUndefined();
+    expect(body.data).toEqual({ changed_symbols: [], downstream: [], summary: '' });
+    expect(repoIntel.getBlastRadius).not.toHaveBeenCalled();
     await app.close();
   });
 
