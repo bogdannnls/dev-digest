@@ -1,8 +1,10 @@
 import type { Container } from '../../platform/container.js';
-import type { PrOverviewBriefResponse } from '@devdigest/shared';
+import type { BlastRadius, PrOverviewBriefResponse } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { OverviewRepository } from './repository.js';
 import { aggregatePrBrief } from './brief/aggregate.js';
+import { projectBlastRadius } from './blast-radius/project.js';
+import type { DegradedReason } from '../repo-intel/types.js';
 
 /**
  * Overview module — Slice A.
@@ -25,4 +27,28 @@ export class OverviewService {
 
     return aggregatePrBrief({ ...inputs, now: new Date() });
   }
+
+  async getBlastRadius(workspaceId: string, prId: string): Promise<PrBlastRadiusResponse> {
+    const pull = await this.repo.getPull(workspaceId, prId);
+    if (!pull) throw new NotFoundError('Pull request not found');
+
+    const files = await this.repo.getChangedFilePaths(prId);
+    const result = await this.container.repoIntel.getBlastRadius(pull.repoId, files);
+
+    if (result.degraded === true) {
+      return {
+        status: 'degraded',
+        reason: result.reason ?? 'no_data',
+        data: projectBlastRadius(result),
+      };
+    }
+
+    return { status: 'ready', data: projectBlastRadius(result) };
+  }
 }
+
+export type PrBlastRadiusResponse = {
+  status: 'ready' | 'degraded';
+  reason?: DegradedReason;
+  data: BlastRadius;
+};

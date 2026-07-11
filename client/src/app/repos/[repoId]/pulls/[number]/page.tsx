@@ -13,6 +13,7 @@ import { RepoNotFound } from "@/components/repo-not-found";
 import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
+import { BlastTab } from "./_components/BlastTab";
 import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
@@ -135,6 +136,8 @@ export default function PRDetailPage() {
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
         {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
+
+        {tab === "blast" && <BlastTab prId={prId} repoId={repoId} repoFullName={repoFullName} headSha={pr.head_sha} />}
 
         {tab === "findings" && (
           <FindingsTab

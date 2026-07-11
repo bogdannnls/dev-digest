@@ -1,0 +1,1 @@
+export { BlastTab } from "./BlastTab";
