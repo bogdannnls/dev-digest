@@ -9,6 +9,7 @@
  * valid Review fixture so the grounding/serialization pipeline runs end-to-end.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
@@ -169,6 +170,69 @@ d('GET /agents/eval-fixtures + POST /agents/:id/skills-eval', () => {
 
     await app.close();
   });
+
+  it(
+    'AC-45: an agent with a non-empty attached_context_paths still completes an eval run ' +
+      'with no repo clone resolvable, and specs are omitted from both sides’ prompt assembly',
+    async () => {
+      const plainApp = await makePlainApp();
+      const agentId = await seedAgentWithSkill(plainApp);
+      await plainApp.close();
+
+      // Set attached_context_paths directly at the data layer — bypassing the
+      // save-time discovery validation (AC-33), which requires a resolvable repo
+      // clone. That's orthogonal to what AC-45 guards: an agent whose config
+      // ALREADY carries this field must still eval cleanly when the harness's
+      // static fixture has no clone to resolve project-context documents
+      // against. `evaluateSkillsAB` never wires attached_context_paths into
+      // `reviewPullRequest` at all (see server/src/modules/agents/service.ts),
+      // so this must pass without any repo/context resolution happening.
+      await pg.handle.db
+        .update(t.agents)
+        .set({ attachedContextPaths: ['specs/some-invariant.md'] })
+        .where(eq(t.agents.id, agentId));
+
+      const mockAnthropicLlm = new MockLLMProvider('anthropic', { structured: REVIEW_FIXTURE });
+      const mockOpenaiLlm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+      const app = await buildApp({
+        config: config(),
+        db: pg.handle.db,
+        overrides: {
+          embedder: new MockEmbedder(),
+          llm: { anthropic: mockAnthropicLlm, openai: mockOpenaiLlm },
+        },
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/agents/${agentId}/skills-eval`,
+        payload: { fixture_id: 'test-only-happy-path' },
+      });
+
+      // No exception thrown, normal 200 + SkillsEvalResult shape — the absent
+      // repo clone must not fail the run.
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.fixture.id).toBe('test-only-happy-path');
+      expect(Array.isArray(body.with_skills.findings)).toBe(true);
+      expect(Array.isArray(body.without_skills.findings)).toBe(true);
+
+      // The agent (provider 'openai') is the one actually invoked; assert every
+      // completed LLM call's assembled prompt has NO "## Project context"
+      // section — i.e. specs were never injected on either side.
+      expect(mockOpenaiLlm.calls.length).toBeGreaterThan(0);
+      for (const call of mockOpenaiLlm.calls) {
+        const req = call.req as { messages?: { content: string }[] };
+        for (const message of req.messages ?? []) {
+          expect(message.content).not.toContain('## Project context');
+        }
+      }
+      // The other provider was never invoked for this agent.
+      expect(mockAnthropicLlm.calls.length).toBe(0);
+
+      await app.close();
+    },
+  );
 
   it('returns 404 on unknown agent id', async () => {
     const app = await makePlainApp();
