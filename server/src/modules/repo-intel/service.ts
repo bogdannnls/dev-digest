@@ -48,6 +48,7 @@ import {
   INDEX_JOB_KIND,
   INDEXER_VERSION,
   MAX_CALLERS_PER_SYMBOL,
+  MAX_SECOND_HOP_FILES,
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
@@ -272,13 +273,18 @@ export class RepoIntelService implements RepoIntel {
       for (const r of refs) {
         if (r.fromPath === sym.file) continue; // skip the decl's own file
         const callerName = enclosingSymbolName(allSymbols, r.fromPath, r.line);
-        const key = `${r.fromPath}|${callerName}|${sym.name}`;
+        // Key MUST include `sym.file`: two changed symbols sharing a bare name but
+        // declared in different files each carry their own `viaFile`, so they must
+        // dedup independently — otherwise the second same-named symbol collides on
+        // every key and emits zero callers (recall-over-precision per symbol).
+        const key = `${r.fromPath}|${callerName}|${sym.name}|${sym.file}`;
         if (callerSeen.has(key)) continue;
         callerSeen.add(key);
         callerRows.push({
           file: r.fromPath,
           symbol: callerName,
           viaSymbol: sym.name,
+          viaFile: sym.file,
           line: r.line,
           rank: 0, // ripgrep/degraded path has no persistent rank
         });
@@ -296,7 +302,7 @@ export class RepoIntelService implements RepoIntel {
 
     return {
       changedSymbols,
-      callers: callerRows,
+      callers: capCallersPerSymbol(callerRows),
       impactedEndpoints: [...endpoints],
       degraded: true,
       reason: 'no_data',
@@ -358,13 +364,17 @@ export class RepoIntelService implements RepoIntel {
         enclosingFromRows(symsByFile.get(c.fromPath) ?? [], c.line) ??
         c.fromPath.split('/').pop() ??
         c.fromPath;
-      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}`;
+      // Include `declFile`: one caller file can hold resolved references to two
+      // same-named symbols declared in different changed files (aliased imports);
+      // keying without it would drop the second decl's caller row.
+      const key = `${c.fromPath}|${enclosing}|${c.toSymbol}|${c.declFile}`;
       if (seenCaller.has(key)) continue;
       seenCaller.add(key);
       callers.push({
         file: c.fromPath,
         symbol: enclosing,
         viaSymbol: c.toSymbol,
+        viaFile: c.declFile,
         line: c.line,
         rank: c.rank,
       });
@@ -381,11 +391,59 @@ export class RepoIntelService implements RepoIntel {
       for (const e of f.endpoints) endpoints.add(e);
     }
 
+    // Transitive (≤2-hop) endpoint reachability. Hop-1 = `callerFiles` (files that
+    // import a changed file). Hop-2 = files that import a hop-1 caller file; an
+    // endpoint declared in a hop-2 file is reachable THROUGH that hop-1 file, so we
+    // attribute it to the same hop-1 caller (and thus, downstream, to the same
+    // changed symbol). Bounded: one reverse-edge query + one facts read, capped
+    // fan-out, no recursion — cycles are impossible.
+    const secondHopEndpointsByCallerFile: Record<string, string[]> = {};
+    if (callerFiles.length > 0) {
+      const changedSet = new Set(changedFiles);
+      const callerSet = new Set(callerFiles);
+      const importerEdges = await this.repo.getImporters(repoId, callerFiles);
+      // Distinct hop-2 files: importers of a caller file that are neither a
+      // changed file nor a hop-1 caller themselves (avoids double counting).
+      const hop2Files = [
+        ...new Set(
+          importerEdges
+            .map((e) => e.fromFile)
+            .filter((f) => !changedSet.has(f) && !callerSet.has(f)),
+        ),
+      ]
+        // Sort before the cap so WHICH files survive is deterministic across
+        // refreshes (the edge query returns rows unordered).
+        .sort()
+        .slice(0, MAX_SECOND_HOP_FILES);
+
+      if (hop2Files.length > 0) {
+        const hop2Set = new Set(hop2Files);
+        const hop2Facts = await this.repo.getFileFacts(repoId, hop2Files);
+        const endpointsByHop2File = new Map<string, string[]>();
+        for (const f of hop2Facts) {
+          if (f.endpoints.length > 0) endpointsByHop2File.set(f.filePath, f.endpoints);
+        }
+        // Each edge `fromFile → toFile` here means fromFile (hop-2) imports toFile
+        // (a hop-1 caller). Attribute the hop-2 file's endpoints to that caller file.
+        for (const edge of importerEdges) {
+          if (!hop2Set.has(edge.fromFile)) continue;
+          const eps = endpointsByHop2File.get(edge.fromFile);
+          if (!eps) continue;
+          const bucket = (secondHopEndpointsByCallerFile[edge.toFile] ??= []);
+          for (const e of eps) {
+            if (!bucket.includes(e)) bucket.push(e);
+            endpoints.add(e); // widen the flat union too
+          }
+        }
+      }
+    }
+
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: capCallersPerSymbol(callers),
       impactedEndpoints: [...endpoints],
       factsByFile,
+      secondHopEndpointsByCallerFile,
       degraded: false,
     };
   }
@@ -730,6 +788,31 @@ const JUNK_PATH_PATTERNS = [
 function isJunkPath(path: string): boolean {
   const lower = path.toLowerCase();
   return JUNK_PATH_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * Per-symbol caller cap (R3): keeps at most `limit` rows per changed symbol —
+ * grouped by `(viaFile ?? '') + '|' + viaSymbol`, the same key the overview
+ * projection uses to bucket callers — preserving the incoming order among
+ * survivors (global rank order on the persistent path, reference-scan order
+ * on the degraded/ripgrep path). Replaces the old GLOBAL `slice(0, N)`, which
+ * could let one high-rank changed symbol's callers consume the entire budget
+ * and starve every other changed symbol's callers.
+ */
+function capCallersPerSymbol(
+  rows: BlastCallerRow[],
+  limit: number = MAX_CALLERS_PER_SYMBOL,
+): BlastCallerRow[] {
+  const countByKey = new Map<string, number>();
+  const out: BlastCallerRow[] = [];
+  for (const row of rows) {
+    const key = `${row.viaFile ?? ''}|${row.viaSymbol}`;
+    const count = countByKey.get(key) ?? 0;
+    if (count >= limit) continue;
+    countByKey.set(key, count + 1);
+    out.push(row);
+  }
+  return out;
 }
 
 /** Enclosing top-level (bare-name) symbol for a line, from persistent rows. */
