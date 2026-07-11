@@ -36,6 +36,9 @@ export interface PrBlastRadiusResponse {
   status: "ready" | "degraded";
   reason?: string;
   data: BlastRadius;
+  /** Commit the caller line numbers are relative to — caller file:line links pin
+      to this, NOT the PR head (a different commit). Absent on the degraded path. */
+  indexedSha?: string;
 }
 
 /**

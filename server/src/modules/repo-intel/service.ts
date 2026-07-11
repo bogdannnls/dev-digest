@@ -444,6 +444,10 @@ export class RepoIntelService implements RepoIntel {
       impactedEndpoints: [...endpoints],
       factsByFile,
       secondHopEndpointsByCallerFile,
+      // Caller line numbers are relative to the indexed commit — deep links must
+      // pin to it, NOT the PR head (a different commit, and caller files aren't in
+      // the PR's changed set).
+      indexedSha: state.lastIndexedSha,
       degraded: false,
     };
   }

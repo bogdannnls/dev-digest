@@ -275,6 +275,23 @@ describe("BlastRadiusCard", () => {
     expect(screen.getByText("src/checkout/handler.ts:42")).toBeInTheDocument();
   });
 
+  it("pins caller links to the INDEXED sha, not the PR head sha", () => {
+    // Caller line numbers come from the index (built at indexedSha); the PR head is
+    // a different commit. Linking at headSha opens the wrong line — the reported bug.
+    mockedUseOverviewBlastRadius.mockReturnValue({
+      data: { status: "ready", data: BLAST_WITH_ROWS, indexedSha: "idxsha999" },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderBlastRadiusCard({ provider: "github", headSha: "prhead000" });
+
+    expect(screen.getByRole("link", { name: /src\/checkout\/handler\.ts:42/i })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/widgets/blob/idxsha999/src/checkout/handler.ts#L42",
+    );
+  });
+
   it("(C2) sorts symbol nodes by endpoints affected desc, then callers desc, then name asc", () => {
     mockedUseOverviewBlastRadius.mockReturnValue({
       data: { status: "ready", data: BLAST_SORT_FIXTURE },

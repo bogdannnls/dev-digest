@@ -176,6 +176,7 @@ d('GET /pulls/:id/overview/blast-radius', () => {
         'src/routes/users.ts': { endpoints: ['GET /users'], crons: [] },
         'src/routes/orders.ts': { endpoints: ['GET /orders'], crons: ['nightly-orders'] },
       },
+      indexedSha: 'idx-sha-abc',
       degraded: false,
     };
     const repoIntel = makeRepoIntelStub(result);
@@ -192,6 +193,8 @@ d('GET /pulls/:id/overview/blast-radius', () => {
 
     expect(body.status).toBe('ready');
     expect(body.reason).toBeUndefined();
+    // Caller file:line links pin to the indexed sha (not the PR head) — surfaced on the envelope.
+    expect(body.indexedSha).toBe('idx-sha-abc');
     expect(body.data.changed_symbols).toEqual([
       { name: 'formatDate', file: 'src/util/helper.ts', kind: 'function' },
       { name: 'parseDate', file: 'src/util/parser.ts', kind: 'function' },

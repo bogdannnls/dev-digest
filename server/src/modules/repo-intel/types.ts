@@ -97,6 +97,13 @@ export interface BlastResult {
    * path. Additive/optional.
    */
   secondHopEndpointsByCallerFile?: Record<string, string[]>;
+  /**
+   * The commit the index was built at — every caller `line` is relative to THIS
+   * sha, not the PR head. Deep links to a caller `file:line` MUST pin to this sha:
+   * caller files are not in the PR's changed set, so their line numbers only line
+   * up with the indexed commit. Persistent path only (absent on the degraded path).
+   */
+  indexedSha?: string;
   degraded?: boolean;
   reason?: DegradedReason;
 }

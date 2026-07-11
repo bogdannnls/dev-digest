@@ -69,10 +69,10 @@ export class OverviewService {
     }
 
     if (result.degraded === true) {
-      return { status: 'degraded', reason: result.reason ?? 'no_data', data };
+      return { status: 'degraded', reason: result.reason ?? 'no_data', data, indexedSha: result.indexedSha };
     }
 
-    return { status: 'ready', data };
+    return { status: 'ready', data, indexedSha: result.indexedSha };
   }
 
   private async generateBlastRadiusSummary(
@@ -117,4 +117,7 @@ export type PrBlastRadiusResponse = {
   status: 'ready' | 'degraded';
   reason?: DegradedReason;
   data: BlastRadius;
+  /** Commit the caller line numbers are relative to; the client pins caller
+   * `file:line` deep links to this (not the PR head). Absent on the degraded path. */
+  indexedSha?: string;
 };

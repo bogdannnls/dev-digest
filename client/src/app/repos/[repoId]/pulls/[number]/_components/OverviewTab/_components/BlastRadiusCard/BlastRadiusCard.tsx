@@ -355,6 +355,11 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
 
   const { status, reason, data: blast } = data;
   const hasChangedSymbols = blast.changed_symbols.length > 0;
+  // Caller file:line links must pin to the commit the index was built at (caller
+  // line numbers are relative to it), NOT the PR head — those are different commits
+  // and caller files aren't in the PR's changed set. Fall back to headSha only when
+  // the server couldn't report an indexed sha (degraded path).
+  const linkSha = data.indexedSha ?? headSha;
 
   if (status === "degraded" && !hasChangedSymbols) {
     return (
@@ -414,7 +419,7 @@ export function BlastRadiusCard({ prId, repoId, repoFullName, headSha, provider 
               symbol={symbol}
               downstream={downstream}
               repoFullName={repoFullName}
-              headSha={headSha}
+              headSha={linkSha}
               provider={provider}
             />
           ))}
