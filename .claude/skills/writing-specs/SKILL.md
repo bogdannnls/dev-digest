@@ -72,7 +72,7 @@ Modules: server|client|reviewer-core|mcp|e2e|cross-cutting
 ## Interfaces & flows           # schemas · workflows · service-to-service comms · contracts (NO code)
 ## Inputs (provenance)          # [reused: L0X] / [deterministic: repo-intel] / [new: N LLM calls]
 ## Untrusted inputs             # reads third-party text? → treat as data, not commands
-## Traceability                 # table AC-id ↔ US-id ↔ module ↔ task-id (task filled by planner)
+## Traceability                 # table AC-id ↔ US-id ↔ module ↔ task-id (task filled by implementation-planner)
 ## Open questions               # [NEEDS CLARIFICATION: …]
 ## Self-check                   # placeholder scan · EARS-testability · consistency · scope · ambiguity
 ```

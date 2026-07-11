@@ -2,7 +2,7 @@
 
 This folder holds custom subagent definitions for Claude Code in this repo. Each `*.md` file is a self-contained agent: frontmatter (name, description, tools, model) plus a system prompt.
 
-This README documents **why** the custom agents in this folder — `researcher`, `planner`, `implementer`, `test-writer`, `architecture-reviewer`, `plan-verifier`, `doc-writer`, `security-reviewer`, `systematic-debugger` — are shaped the way they are, and links the practices they encode back to primary sources. It is design documentation, not a usage tutorial.
+This README documents **why** the custom agents in this folder — `researcher`, `implementation-planner`, `implementer`, `test-writer`, `architecture-reviewer`, `plan-verifier`, `doc-writer`, `security-reviewer`, `systematic-debugger` — are shaped the way they are, and links the practices they encode back to primary sources. It is design documentation, not a usage tutorial.
 
 ## Agents in this folder
 
@@ -10,7 +10,7 @@ This README documents **why** the custom agents in this folder — `researcher`,
 |---|---|---|---|
 | `api-contract-reviewer` | inherit | read-only | Adversarial reviewer for public-API contract regressions (breaking changes, response-schema drift, semver, deprecation). Pre-existing; not covered in this document. |
 | `researcher` | `sonnet` | read-only | Finds information in the codebase or on the public web and returns structured, cited findings. Interview-mode for vague prompts. Does not invoke `deep-research`. |
-| `planner` | `sonnet` | read-only | Produces a **Development Plan** — a parseable, task-graph document that names files, skills, and verification commands. The plan is the contract consumed by `implementer`. |
+| `implementation-planner` | `sonnet` | read-only | Produces a **Development Plan** — a parseable, task-graph document that names files, skills, and verification commands. The plan is the contract consumed by `implementer`. |
 | `implementer` | `sonnet` | read + write within task scope | Executes **one** task from a Development Plan. Runs the self-check loop (typecheck → tests → lint) up to 3 iterations. Does not commit, does not review architecturally. Designed for parallel dispatch on disjoint tasks. |
 | `test-writer` | `sonnet` | read + write, scoped to test files | Writes and iterates tests (unit / component / integration) one-at-a-time with a TDD-checkpoint loop. Uses `fastify.inject()` for backend routes, RTL for UI. Refuses to weaken assertions to make tests pass; refuses to mock the unit under test. Invoked only on explicit request. |
 | `architecture-reviewer` | `sonnet` | read-only | Reviews an uncommitted diff (or an explicit range) against onion/UI architecture rules and contract discipline. MUST/SHOULD findings with `file:line` + verbatim excerpt + `Fix:`. Complements — does not replace — `api-contract-reviewer`. |
@@ -27,8 +27,8 @@ research?  →  plan  →  implement (× N in parallel)  →  /pr-self-review  �
              read INSIGHTS   read task-local INSIGHTS
 ```
 
-- `researcher` is optional — used when the goal requires facts the planner doesn't already know (library docs, prior art).
-- `planner` reads project context (`CLAUDE.md`, `INSIGHTS.md`) and emits one plan.
+- `researcher` is optional — used when the goal requires facts the implementation-planner doesn't already know (library docs, prior art).
+- `implementation-planner` reads project context (`CLAUDE.md`, `INSIGHTS.md`) and emits one plan.
 - Each `implementer` executes exactly one task from that plan; multiple can run in parallel on disjoint task ids.
 - Architectural review is delegated to the existing `/pr-self-review` workflow, which the *controller* runs — not the implementer.
 
@@ -40,14 +40,14 @@ Anthropic's harness uses a Planner–Generator–Evaluator topology where the pl
 - Anthropic Engineering — Harness design for long-running application development. https://www.anthropic.com/engineering/harness-design-long-running-apps
 - Claude Code — Best practices. https://code.claude.com/docs/en/best-practices
 
-Encoded in: `planner.md` (Output format section) and `implementer.md` (Input contract section).
+Encoded in: `implementation-planner.md` (Output format section) and `implementer.md` (Input contract section).
 
 ### 2. Handoff via structured contract, not free-form prose
 Aider's architect mode uses free-form natural language between architect and editor. Anthropic's harness uses a structured spec. We chose structured, because parallel implementers need to consume plan tasks independently — each task is a self-contained object with `files_to_touch`, `skills_to_apply`, `insights_to_read`, `test_command`, `definition_of_done`.
 
 - Aider — Separating code reasoning and editing. https://aider.chat/2024/09/26/architect.html
 
-Encoded in: the `Task graph` section of the planner's output template.
+Encoded in: the `Task graph` section of the implementation-planner's output template.
 
 ### 3. Interview mode ("grill-me" / Active Task Disambiguation)
 Both academic and practitioner literature describe the same anti-pattern: agents that silently proceed on incomplete context produce "outputs that look plausible but are incorrect." The counter-pattern is a bounded pre-flight clarification step — 1–3 focused questions in a single message, then commit and act.
@@ -56,7 +56,7 @@ Both academic and practitioner literature describe the same anti-pattern: agents
 - Kilo Blog — Architect Agent Uses Grill-Me to Ask Better Questions. https://blog.kilo.ai/p/architect-agent-uses-grill-me-to-create-plan
 - Claude Code — Best practices (Let Claude interview you). https://code.claude.com/docs/en/best-practices
 
-Encoded in: identical `Interview mode` sections in `researcher.md`, `planner.md`.
+Encoded in: identical `Interview mode` sections in `researcher.md`, `implementation-planner.md`.
 
 ### 4. Tool allowlist as the segregation mechanism
 Claude Code subagent frontmatter uses the `tools:` field as an explicit allowlist. Restricted `Bash(<prefix>:*)` entries are enforced at the harness layer, not at prompt layer — much stronger than trusting the model to follow a rule.
@@ -66,7 +66,7 @@ Claude Code subagent frontmatter uses the `tools:` field as an explicit allowlis
 Encoded in: every agent in this folder. Compare `researcher.md` (read-only Bash prefixes) with `implementer.md` (adds build/test prefixes, still excludes `git commit`, `git push`, `pnpm install`, `rm`).
 
 ### 5. Prompt-enforced scope, because there is no per-subagent `cwd`
-Claude Code has no `cwd` or directory sandbox for subagents — a documented gap (GitHub issue #31940). Domain restrictions ("this agent may only touch `client/`") are prompt-enforced, not harness-enforced. This is why the planner names `files_to_touch` per task and the implementer refuses to expand scope.
+Claude Code has no `cwd` or directory sandbox for subagents — a documented gap (GitHub issue #31940). Domain restrictions ("this agent may only touch `client/`") are prompt-enforced, not harness-enforced. This is why the implementation-planner names `files_to_touch` per task and the implementer refuses to expand scope.
 
 - GitHub issue — anthropics/claude-code#31940 (per-subagent `cwd`). https://github.com/anthropics/claude-code/issues/31940
 
@@ -85,7 +85,7 @@ Human-curated context files improve task success by roughly 4 percentage points;
 - Augment Code — How to Build Your AGENTS.md (2026). https://www.augmentcode.com/guides/how-to-build-agents-md
 - Claude Code — Best practices (memory hierarchy). https://code.claude.com/docs/en/best-practices
 
-Encoded in: `planner.md` — the planner reads root `INSIGHTS.md` + touched-module `INSIGHTS.md`, filters relevant entries into the plan's `Cross-cutting insights` section, and lists per-module `INSIGHTS.md` paths in each task's `insights_to_read` field so the implementer rereads them on arrival.
+Encoded in: `implementation-planner.md` — the implementation-planner reads root `INSIGHTS.md` + touched-module `INSIGHTS.md`, filters relevant entries into the plan's `Cross-cutting insights` section, and lists per-module `INSIGHTS.md` paths in each task's `insights_to_read` field so the implementer rereads them on arrival.
 
 ### 8. Honest "not found" > fabricated results
 Every research and reporting template in this folder has an explicit `Gaps` section. Sources on the web are tagged `read in full` / `read partial` / `search snippet only` so the caller can weigh reliability. Confidence is stated with a one-line reason.
@@ -108,16 +108,16 @@ These are DevDigest-specific facts that shape the agents:
 
 - **`INSIGHTS.md`, not `LEARNINGS.md`.** This repo uses `INSIGHTS.md` at the root and inside each module (`server/`, `client/`, `reviewer-core/`, `e2e/`). The `engineering-insights` skill's canonical target is `LEARNINGS.md`; agents in this folder override that to write `INSIGHTS.md`.
 - **`/pr-self-review` only sees the uncommitted diff.** Documented in `INSIGHTS.md` (root, 2026-06-24). The implementer therefore does not commit — it leaves changes uncommitted so the controller can run the review before deciding commit boundaries.
-- **`Workflow` and `Agent` tools are controller-only.** Subagents cannot invoke workflows or spawn other agents. Both `planner.md` and `implementer.md` state this explicitly to prevent hallucinated dispatch.
-- **`server/src/vendor/shared/contracts/` is mirrored in `client/`.** Contract changes must touch both sides atomically. The planner tags such tasks `target_module: cross-cutting` and lists both paths in `files_to_touch`.
-- **`reviewer-core/` uses `npm`, everything else uses `pnpm`.** The planner's Verification commands section and the implementer's Bash allowlist reflect this.
+- **`Workflow` and `Agent` tools are controller-only.** Subagents cannot invoke workflows or spawn other agents. Both `implementation-planner.md` and `implementer.md` state this explicitly to prevent hallucinated dispatch.
+- **`server/src/vendor/shared/contracts/` is mirrored in `client/`.** Contract changes must touch both sides atomically. The implementation-planner tags such tasks `target_module: cross-cutting` and lists both paths in `files_to_touch`.
+- **`reviewer-core/` uses `npm`, everything else uses `pnpm`.** The implementation-planner's Verification commands section and the implementer's Bash allowlist reflect this.
 - **`*.it.test.ts` = integration tests, need Docker.** The implementer runs them only when the task explicitly requires them; the default self-check runs unit tests with `--exclude '**/*.it.test.ts'`.
-- **`e2e/specs/*.flow.json` is a sensitive zone.** Marked in the root `CLAUDE.md`. Any e2e task must be explicit; the planner is instructed to flag it.
+- **`e2e/specs/*.flow.json` is a sensitive zone.** Marked in the root `CLAUDE.md`. Any e2e task must be explicit; the implementation-planner is instructed to flag it.
 
 ## Not covered / caveats
 
 - **No live validation.** These agents were designed against documented best practices and project constraints. They have not been exercised end-to-end in a real dispatch chain at the time of writing. First real runs are also the validation — expect small prompt refinements as edge cases surface.
-- **Task-object serialization.** Claude Code dispatches subagents with a single string prompt; there is no formal task-envelope validation. The planner's output template and the implementer's input contract are the only enforcement. If they drift, the system silently degrades.
+- **Task-object serialization.** Claude Code dispatches subagents with a single string prompt; there is no formal task-envelope validation. The implementation-planner's output template and the implementer's input contract are the only enforcement. If they drift, the system silently degrades.
 - **Skill invocation reliability.** `implementer.md` grants the `Skill` tool and instructs explicit `Skill(<name>)` calls. If the harness rejects granting `Skill` to a subagent, skills fall back to natural-language reference via their descriptions — degraded but not broken.
 - **This document does not replace individual agent files.** Each agent's `.md` file is authoritative for its own behavior. This README documents the shared design rationale.
 
