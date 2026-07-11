@@ -20,5 +20,19 @@
     "loadError": "Couldn’t load spec",
     "save": "Save",
     "saving": "Saving…"
+  },
+  "preview": {
+    "closeAria": "Close preview",
+    "loadError": "Couldn’t load this document",
+    "notFound": {
+      "title": "Document not found",
+      "body": "This document no longer exists at this path. It may have been renamed, moved, or deleted since it was last discovered."
+    },
+    "kind": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights",
+      "doc": "doc"
+    }
   }
 }
