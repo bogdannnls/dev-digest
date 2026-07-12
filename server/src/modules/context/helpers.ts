@@ -1,81 +1,34 @@
 /**
  * Pure discovery helpers for the Project Context reader (L05 T1).
  *
- * `walk` mirrors the hand-rolled recursion in
- * `adapters/codeindex/ripgrep.ts` (~line 128): `readdir(dir, { withFileTypes:
- * true })`, skip an ignore set, recurse into directories, collect files. No
- * new glob dependency is introduced (per the approved design).
- *
- * Symlink safety (AC-7): `Dirent.isDirectory()` / `Dirent.isFile()` reflect
- * the directory ENTRY's own type as reported by the `readdir` syscall — they
- * do NOT stat a symlink's target. A symlink entry therefore answers `false`
- * to both (verified empirically: `isSymbolicLink()` is `true`, the other two
- * are `false`), so this walk NEVER descends into, and NEVER collects, a
- * symlink — whether it points at a file or a directory, inside or outside the
- * walked tree. That is a strict superset of "don't follow a symlink that
- * escapes the clone root": no symlink is ever followed, full stop.
+ * Onion MUST.2: every filesystem access — including the recursive directory
+ * walk — lives behind the `GitClient` adapter (`GitClient.walkFiles`, see
+ * `adapters/git/simple-git.ts`). This module never touches `node:fs`; it only
+ * filters an already-walked, clone-relative file list.
  */
-import { readdir } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
-
-/** Directories never descended into — build artifacts, VCS metadata, deps. */
-const IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.next', 'coverage']);
 
 /**
- * Recursively collect absolute file paths under `dir`. Never follows a
- * symlink (see module header). Missing/unreadable directories yield `[]`
- * rather than throwing — callers decide what "nothing here" means.
- */
-export async function walk(dir: string): Promise<string[]> {
-  const acc: string[] = [];
-  await walkInto(dir, acc);
-  return acc;
-}
-
-async function walkInto(dir: string, acc: string[]): Promise<void> {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (IGNORE_DIRS.has(entry.name)) continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      await walkInto(full, acc);
-    } else if (entry.isFile()) {
-      acc.push(full);
-    }
-    // A symlink entry is neither isDirectory() nor isFile() here — it is
-    // silently skipped: never traversed, never collected.
-  }
-}
-
-/**
- * Discover every `.md` file under `cloneRoot` whose relative path passes
- * through one of `roots` as an EXACT directory-name segment, at any depth —
- * implementing `**\/{specs,docs,insights}/**\/*.md` (AC-1) without a glob
- * dependency. `roots` is server-side config (`config.contextRoots`, AC-8),
- * never hardcoded per call site.
+ * Discover every `.md` path (from `files`, clone-relative & posix-style —
+ * `/`-separated even on Windows — exactly as produced by `GitClient.walkFiles`)
+ * whose relative path passes through one of `roots` as an EXACT directory-name
+ * segment, at any depth — implementing `**\/{specs,docs,insights}/**\/*.md`
+ * (AC-1) without a glob dependency. `roots` is server-side config
+ * (`config.contextRoots`, AC-8), never hardcoded per call site.
  *
- * Returns clone-relative, posix-style paths (`/`-separated even on Windows),
- * sorted for deterministic output.
+ * Returns clone-relative, posix-style paths, sorted for deterministic output.
  */
-export async function discoverMarkdownFiles(
-  cloneRoot: string,
+export function discoverMarkdownFiles(
+  files: readonly string[],
   roots: readonly string[],
-): Promise<string[]> {
+): string[] {
   const rootSet = new Set(roots);
-  const absolute = await walk(cloneRoot);
   const out: string[] = [];
-  for (const abs of absolute) {
-    if (!abs.endsWith('.md')) continue;
-    const rel = relative(cloneRoot, abs);
-    const segments = rel.split(sep);
+  for (const rel of files) {
+    if (!rel.endsWith('.md')) continue;
+    const segments = rel.split('/');
     const dirSegments = segments.slice(0, -1);
     if (dirSegments.some((seg) => rootSet.has(seg))) {
-      out.push(segments.join('/'));
+      out.push(rel);
     }
   }
   return out.sort();

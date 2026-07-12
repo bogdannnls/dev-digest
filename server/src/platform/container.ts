@@ -26,6 +26,7 @@ import { ConfigError } from './errors.js';
 import { BitbucketClient } from '../adapters/bitbucket/rest.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { RepoRepository } from '../modules/repos/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { ContextService } from '../modules/context/service.js';
@@ -89,6 +90,7 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _repoRepo?: RepoRepository;
   private _repoIntel?: RepoIntel;
   private _context?: ContextService;
   private _depgraph?: DepGraph;
@@ -118,6 +120,10 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  get repoRepo(): RepoRepository {
+    return (this._repoRepo ??= new RepoRepository(this.db));
   }
 
   get codeIndex(): CodeIndex {

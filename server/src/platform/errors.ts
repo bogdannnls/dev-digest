@@ -64,3 +64,17 @@ export class RepoNotClonedError extends AppError {
     super('repo_not_cloned', message, 409, details);
   }
 }
+
+/**
+ * Thrown by `modules/reviews`'s `buildSpecsDigest` pre-flight (L05 T4) when an
+ * attached document path fails re-verification against a fresh discovery
+ * pass, or vanishes between that pass and the read (a TOCTOU race — e.g. a
+ * concurrent `resync`'s `git reset --hard` on the same clone). Distinct from
+ * `RepoNotClonedError` (the repo itself has no clone at all, a different
+ * pre-flight condition in the same function).
+ */
+export class ProjectContextError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super('project_context_invalid', message, 422, details);
+  }
+}

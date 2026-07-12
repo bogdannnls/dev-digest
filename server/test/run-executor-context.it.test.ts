@@ -15,9 +15,10 @@
  * `run-executor-skills.it.test.ts` (Spec D).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm, readFile, unlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile, unlink, stat, access, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import type {
   GitClient,
   RepoRef,
@@ -52,6 +53,33 @@ const REVIEW_FIXTURE: Review = {
   score: 90,
   findings: [],
 };
+
+/** Directories `walkFiles` never descends into — mirrors `SimpleGitClient`'s ignore set. */
+const WALK_IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.next', 'coverage']);
+
+/**
+ * Symlink-safe recursive walk over a real directory, mirroring
+ * `SimpleGitClient.walkFiles`: `readdir(dir, { withFileTypes: true })` +
+ * `Dirent.isDirectory()/isFile()` (the entry's OWN type) never follows a
+ * symlink. Returns clone-relative, posix-style paths.
+ */
+async function walkInto(root: string, dir: string, acc: string[]): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (WALK_IGNORE_DIRS.has(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkInto(root, full, acc);
+    } else if (entry.isFile()) {
+      acc.push(relative(root, full).split(sep).join('/'));
+    }
+  }
+}
 
 /**
  * GitClient-shaped test double over a REAL directory on disk (mirrors
@@ -91,6 +119,25 @@ class RealDirGitClient implements GitClient {
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     this.reads.push(path);
     return readFile(join(this.root, path), 'utf8');
+  }
+  async cloneExists(): Promise<boolean> {
+    return access(this.root, constants.F_OK).then(
+      () => true,
+      () => false,
+    );
+  }
+  async statFile(_repo: RepoRef, relPath: string): Promise<{ size: number; mtime: Date } | null> {
+    try {
+      const st = await stat(join(this.root, relPath));
+      return { size: st.size, mtime: st.mtime };
+    } catch {
+      return null;
+    }
+  }
+  async walkFiles(): Promise<string[]> {
+    const acc: string[] = [];
+    await walkInto(this.root, this.root, acc);
+    return acc;
   }
 }
 
@@ -272,9 +319,22 @@ d('run-executor: buildSpecsDigest — Project Context injection (L05 T4)', () =>
     app: Awaited<ReturnType<typeof makeApp>>,
     runId: string,
   ): Promise<RunTrace> {
-    const res = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
-    expect(res.statusCode).toBe(200);
-    return res.json() as RunTrace;
+    // The run-executor flips agent_runs.status to a terminal state
+    // (completeAgentRun) BEFORE it writes the run_traces document
+    // (saveRunTrace) — two separate tables. `waitForPrRuns` only polls the
+    // status, so under load (full concurrent it.test suite) the trace row can
+    // lag a terminal run by a few ms. Poll the trace endpoint until it's
+    // available rather than assuming it's readable the instant the run is done.
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const res = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
+      if (res.statusCode === 200) return res.json() as RunTrace;
+      if (Date.now() > deadline) {
+        expect(res.statusCode).toBe(200); // surface the last non-200 with a clear failure
+        throw new Error('unreachable');
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
   }
 
   it('null, absent, and empty attached_context_paths all produce an identical run outcome (AC-14)', async () => {

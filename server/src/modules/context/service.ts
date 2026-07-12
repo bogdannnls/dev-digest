@@ -8,22 +8,18 @@
  * path is safe to read — `listPaths` is that shared primitive; later tasks
  * (attach-time validation for agents/skills, the run-executor pre-flight)
  * reuse it rather than re-implementing discovery or path-safety.
+ *
+ * Onion MUST.2: all filesystem access goes through `container.git`
+ * (`cloneExists`/`walkFiles`/`statFile`/`readFile`) — no `node:fs` import here.
  */
-import { access, stat } from 'node:fs/promises';
-import { constants } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import type { RepoRef, SpecFile } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
 import { NotFoundError, RepoNotClonedError } from '../../platform/errors.js';
-import { RepoRepository } from '../repos/repository.js';
 import { discoverMarkdownFiles, isPathInDiscoverySet } from './helpers.js';
 
 export class ContextService {
-  private repos: RepoRepository;
-
-  constructor(private container: Container) {
-    this.repos = new RepoRepository(container.db);
-  }
+  constructor(private container: Container) {}
 
   /**
    * Freshly-discovered relative document paths for a repo, or `null` if the
@@ -40,7 +36,8 @@ export class ContextService {
   async listPaths(workspaceId: string, repoId: string): Promise<Set<string> | null> {
     const resolved = await this.resolveClone(workspaceId, repoId);
     if (!resolved) return null;
-    const files = await discoverMarkdownFiles(resolved.cloneRoot, this.container.config.contextRoots);
+    const walked = await this.container.git.walkFiles(resolved.ref);
+    const files = discoverMarkdownFiles(walked, this.container.config.contextRoots);
     return new Set(files);
   }
 
@@ -51,8 +48,9 @@ export class ContextService {
   async list(workspaceId: string, repoId: string): Promise<SpecFile[]> {
     const resolved = await this.resolveClone(workspaceId, repoId);
     if (!resolved) throw new RepoNotClonedError();
-    const files = await discoverMarkdownFiles(resolved.cloneRoot, this.container.config.contextRoots);
-    return this.toSpecFiles(resolved.cloneRoot, files);
+    const walked = await this.container.git.walkFiles(resolved.ref);
+    const files = discoverMarkdownFiles(walked, this.container.config.contextRoots);
+    return this.toSpecFiles(resolved.ref, files);
   }
 
   /**
@@ -73,21 +71,24 @@ export class ContextService {
   async readOne(workspaceId: string, repoId: string, path: string): Promise<SpecFile> {
     const resolved = await this.resolveClone(workspaceId, repoId);
     if (!resolved) throw new RepoNotClonedError();
-    const files = await discoverMarkdownFiles(resolved.cloneRoot, this.container.config.contextRoots);
+    const walked = await this.container.git.walkFiles(resolved.ref);
+    const files = discoverMarkdownFiles(walked, this.container.config.contextRoots);
     if (!isPathInDiscoverySet(path, files)) {
       throw new NotFoundError('Document not found in the current discovery set', { path });
     }
     // `path` passed the whitelist check above, but the file can still vanish
     // between discovery and read — a real race, e.g. a concurrent `resync`
-    // running `git reset --hard` on this same clone. Map ANY fs error here to
-    // a clean NotFoundError: never let a raw fs error (whose message embeds
+    // running `git reset --hard` on this same clone. Map ANY failure here
+    // (a raw fs-shaped `readFile` rejection, or `statFile` coming back `null`)
+    // to a clean NotFoundError: never let a raw fs error (whose message embeds
     // the absolute clone path) reach app.ts's generic 500 handler, which
     // forwards `err.message` verbatim and would leak that path.
     try {
       const [content, st] = await Promise.all([
         this.container.git.readFile(resolved.ref, path),
-        stat(join(resolved.cloneRoot, path)),
+        this.container.git.statFile(resolved.ref, path),
       ]);
+      if (!st) throw new Error('document vanished before stat could complete');
       return { path, content, size: st.size, updated_at: st.mtime.toISOString() };
     } catch {
       throw new NotFoundError('Document not found', { path });
@@ -96,17 +97,17 @@ export class ContextService {
 
   /**
    * Resolve the repo row (tenant-scoped by `workspaceId`, guarding against
-   * cross-workspace repoId enumeration) and its clone root. Returns `null`
-   * when the row exists but nothing is cloned to disk yet — detected via
-   * `fs.access` on `container.git.clonePathFor(...)`, NOT the row's nullable
-   * `clonePath` column (written once at clone time; can go stale relative to
-   * the real filesystem, e.g. if the clone dir was later removed).
+   * cross-workspace repoId enumeration) and confirm it has a clone on disk.
+   * Returns `null` when the row exists but nothing is cloned yet — detected
+   * via `container.git.cloneExists(...)`, NOT the row's nullable `clonePath`
+   * column (written once at clone time; can go stale relative to the real
+   * filesystem, e.g. if the clone dir was later removed).
    */
   private async resolveClone(
     workspaceId: string,
     repoId: string,
-  ): Promise<{ ref: RepoRef; cloneRoot: string } | null> {
-    const repo = await this.repos.getById(workspaceId, repoId);
+  ): Promise<{ ref: RepoRef } | null> {
+    const repo = await this.container.repoRepo.getById(workspaceId, repoId);
     if (!repo) throw new NotFoundError('Repo not found');
     const ref: RepoRef = { owner: repo.owner, name: repo.name };
     const cloneRoot = this.container.git.clonePathFor(ref);
@@ -116,25 +117,24 @@ export class ContextService {
     // `.`, so `owner: '..'` is theoretically constructable) must never let
     // the resolved clone root escape the configured clone dir. Treat an
     // escape identically to "not cloned" — never discover/serve from it.
+    // This is a pure string check on the port's output (`clonePathFor`), not
+    // an fs access, so it stays here rather than moving into the adapter.
     const resolvedRoot = resolve(cloneRoot);
     const resolvedCloneDir = resolve(this.container.config.cloneDir);
     if (!resolvedRoot.startsWith(resolvedCloneDir + sep)) {
       return null;
     }
 
-    const cloned = await access(cloneRoot, constants.F_OK).then(
-      () => true,
-      () => false,
-    );
+    const cloned = await this.container.git.cloneExists(ref);
     if (!cloned) return null;
-    return { ref, cloneRoot };
+    return { ref };
   }
 
   /** Stat each discovered path for its size + last-modified time (best-effort). */
-  private async toSpecFiles(cloneRoot: string, files: string[]): Promise<SpecFile[]> {
+  private async toSpecFiles(ref: RepoRef, files: string[]): Promise<SpecFile[]> {
     const out: SpecFile[] = [];
     for (const path of files) {
-      const st = await stat(join(cloneRoot, path)).catch(() => null);
+      const st = await this.container.git.statFile(ref, path);
       out.push({ path, size: st?.size ?? null, updated_at: st?.mtime.toISOString() ?? null });
     }
     return out;

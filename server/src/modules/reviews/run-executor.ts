@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { RepoNotClonedError, ProjectContextError } from '../../platform/errors.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -541,7 +542,7 @@ export class ReviewRunExecutor {
         `Project context pre-flight failed: repo "${repo.owner}/${repo.name}" has no clone on ` +
         `disk, but ${effective.length} attached document(s) are configured: ${effective.join(', ')}`;
       runLog.error(msg);
-      throw new Error(msg);
+      throw new RepoNotClonedError(msg);
     }
     const offending = effective.filter((p) => !known.has(p));
     if (offending.length > 0) {
@@ -549,7 +550,7 @@ export class ReviewRunExecutor {
         `Project context pre-flight failed: attached document(s) not found in the current ` +
         `discovery set: ${offending.join(', ')}`;
       runLog.error(msg);
-      throw new Error(msg);
+      throw new ProjectContextError(msg);
     }
 
     // ---- 3. Read + tokenize, in effective-set order (AC-23, AC-25, AC-26). -
@@ -570,7 +571,7 @@ export class ReviewRunExecutor {
       } catch {
         const msg = `Project context: document vanished during read: ${path}`;
         runLog.error(msg);
-        throw new Error(msg);
+        throw new ProjectContextError(msg);
       }
       specs.push(content);
       specsRead.push(path);

@@ -11,9 +11,10 @@
  * not-cloned.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat, access, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import type {
   GitClient,
   RepoRef,
@@ -34,6 +35,33 @@ const d = hasDocker ? describe : describe.skip;
 if (!hasDocker) {
   // eslint-disable-next-line no-console
   console.warn('[agents-context-paths] Docker not available — skipping integration tests.');
+}
+
+/** Directories `walkFiles` never descends into — mirrors `SimpleGitClient`'s ignore set. */
+const WALK_IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.next', 'coverage']);
+
+/**
+ * Symlink-safe recursive walk over a real directory, mirroring
+ * `SimpleGitClient.walkFiles`: `readdir(dir, { withFileTypes: true })` +
+ * `Dirent.isDirectory()/isFile()` (the entry's OWN type) never follows a
+ * symlink. Returns clone-relative, posix-style paths.
+ */
+async function walkInto(root: string, dir: string, acc: string[]): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (WALK_IGNORE_DIRS.has(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkInto(root, full, acc);
+    } else if (entry.isFile()) {
+      acc.push(relative(root, full).split(sep).join('/'));
+    }
+  }
 }
 
 /** GitClient-shaped test double over a REAL directory on disk (mirrors context-reader.it.test.ts). */
@@ -66,6 +94,25 @@ class RealDirGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.root, path), 'utf8');
+  }
+  async cloneExists(): Promise<boolean> {
+    return access(this.root, constants.F_OK).then(
+      () => true,
+      () => false,
+    );
+  }
+  async statFile(_repo: RepoRef, relPath: string): Promise<{ size: number; mtime: Date } | null> {
+    try {
+      const st = await stat(join(this.root, relPath));
+      return { size: st.size, mtime: st.mtime };
+    } catch {
+      return null;
+    }
+  }
+  async walkFiles(): Promise<string[]> {
+    const acc: string[] = [];
+    await walkInto(this.root, this.root, acc);
+    return acc;
   }
 }
 
