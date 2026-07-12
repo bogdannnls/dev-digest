@@ -20,7 +20,7 @@ What already exists (do **not** rebuild):
 | Top verdict card (`Request changes · 6 findings · 2 blockers · 61 · $0.014`) | `PrOverviewBrief` → `GET /pulls/:id/overview/brief` (pure aggregation, no LLM) | shipped |
 | INTENT panel (quote, In/Out of scope) | Intent layer `PrIntentDto.goal/inScope/outOfScope` → `GET …/overview/intent` (LLM, cached, SSE, refresh, staleness) | shipped |
 | RISK AREAS (auth / dep / round-trip) | Intent's `riskAreas[]` (icon+label, max 3) | shipped |
-| BLAST RADIUS (symbols/callers/endpoints/cron) | L04 `BlastRadius` | shipped |
+| BLAST RADIUS (symbols/callers/endpoints/cron) | capability `RepoIntel.getBlastRadius()` exists, but **no Overview panel / `/overview/blast` route** | capability only (not a rendered panel) |
 | Files changed — Smart order | L03 `SmartDiff` | shipped |
 | **REVIEW FOCUS — READ THESE FIRST** | `review_focus` — **zero usages** | **net-new** |
 | Unified synthesized brief `{what, why, riskLevel, risks[], reviewFocus[]}` | — | **net-new** |
@@ -48,7 +48,7 @@ The synth call consumes only pre-computed data. Provenance annotations per the b
 | Input | Source | Provenance |
 |---|---|---|
 | intent (goal / inScope / outOfScope / riskAreas) | `pr_intent` row | `[reused]` |
-| blast summary (symbols, callers, endpoints, crons) | L04 BlastRadius | `[reused]` |
+| blast summary (symbols, callers, endpoints, crons) | `RepoIntel.getBlastRadius(repoId, changedFiles)` | `[reused: existing capability, new call site]` |
 | findings (id, file, startLine, endLine, severity, title, rationale) | `findings` rows for the latest review | `[reused]` |
 | diff stats (core/wiring/boilerplate counts, +/−) | L03 SmartDiff groups | `[reused]` |
 | linked issue | already inside `intent.references` | `[reused]` |
@@ -124,7 +124,7 @@ and the client hook clones `useOverviewIntent`.
 
 ## 9. Caching & staleness
 
-- Cache keyed by `pr_id` in a new `pr_brief` table (mirrors `pr_intent`).
+- Cache keyed by `pr_id` in the **existing** `pr_brief` table (`{prId, json}`, currently zero consumers). Migration **ALTERs** it — never `CREATE TABLE pr_brief`.
 - `basedOn` records `headSha`, latest `reviewId`, and `intentComputedAt`.
 - On GET, compare stored vs current → `ready` or `ready-stale(+reasons)`. Stale reasons:
   `head_sha` changed, a `new_review` completed since, or `intent` recomputed.
@@ -142,8 +142,10 @@ and the client hook clones `useOverviewIntent`.
 
 ## 11. Cost tracking
 
-The refresh executes as a recorded `agent_run` with a `run_cost` row (same path the Intent
-layer uses), so the Overview aggregation and the card can display tokens/USD.
+The refresh executes as a recorded `agent_runs` row (model + tokensIn/tokensOut). USD is
+**derived** via `estimateCost(model, tokensIn, tokensOut)` — there is **no `run_cost` table**.
+This mirrors `pr_intent`'s persisted-cost path, so the Overview aggregation and the card can
+display tokens/USD.
 
 ## 12. Client
 
@@ -165,5 +167,6 @@ layer uses), so the Overview aggregation and the card can display tokens/USD.
 - Exact rate-limit numbers for `refresh` (reuse intent's 1/min/PR, 30/hr/workspace?).
 - Whether `risks[]` reuses `intent.riskAreas` verbatim or is re-derived in the synth call
   (leaning: reuse + attach grounded fileRef; confirm in EARS ACs).
-- Migration column set for `pr_brief` (mirror `pr_intent` minus intent-specific fields).
+- ~~Migration column set for `pr_brief`~~ → resolved: `pr_brief` already exists; migration
+  ALTERs the existing table (see spec AC-37), never creates it.
 - Which `Feature-Models` id drives this call (`risk_brief`, or a new `review_focus` id?).
