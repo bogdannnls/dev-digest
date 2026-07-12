@@ -98,7 +98,7 @@ Once a hypothesis is confirmed:
 1. **Describe the fix in prose or pseudocode.** Not final code — this is a hand-off to `implementer`.
 2. **List the files that would need to change** (`files_to_touch` in the report).
 3. **Name the test command** that would verify the fix landed (`test_command`).
-4. **Estimate risk / scope.** If the fix requires editing >3 files or >100 lines, flag as `Risk: broad — recommend planner intermediation` in the report.
+4. **Estimate risk / scope.** If the fix requires editing >3 files or >100 lines, flag as `Risk: broad — recommend implementation-planner intermediation` in the report.
 
 ### Multi-hypothesis escape hatch (advanced, deferred)
 

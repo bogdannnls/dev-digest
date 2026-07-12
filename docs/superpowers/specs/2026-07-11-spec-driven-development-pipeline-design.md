@@ -87,7 +87,7 @@ handling. Build step: check whether adding a skill requires regenerating the too
 ```
 # Spec: <feature> | Spec ID: SPEC-NN | Status: draft|approved|implemented
 Supersedes: <link or —>
-Modules: server|client|reviewer-core|e2e|cross-cutting
+Modules: server|client|reviewer-core|mcp|e2e|cross-cutting
 
 ## Problem & why
 ## Goals / Non-goals

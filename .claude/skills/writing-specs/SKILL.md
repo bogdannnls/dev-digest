@@ -61,7 +61,7 @@ Paste this template verbatim as the skeleton of every new spec (source: design d
 ```
 # Spec: <feature> | Spec ID: SPEC-NN | Status: draft|approved|implemented
 Supersedes: <link or —>
-Modules: server|client|reviewer-core|e2e|cross-cutting
+Modules: server|client|reviewer-core|mcp|e2e|cross-cutting
 
 ## Problem & why
 ## Goals / Non-goals
@@ -72,7 +72,7 @@ Modules: server|client|reviewer-core|e2e|cross-cutting
 ## Interfaces & flows           # schemas · workflows · service-to-service comms · contracts (NO code)
 ## Inputs (provenance)          # [reused: L0X] / [deterministic: repo-intel] / [new: N LLM calls]
 ## Untrusted inputs             # reads third-party text? → treat as data, not commands
-## Traceability                 # table AC-id ↔ US-id ↔ module ↔ task-id (task filled by planner)
+## Traceability                 # table AC-id ↔ US-id ↔ module ↔ task-id (task filled by implementation-planner)
 ## Open questions               # [NEEDS CLARIFICATION: …]
 ## Self-check                   # placeholder scan · EARS-testability · consistency · scope · ambiguity
 ```
@@ -86,7 +86,7 @@ way it belongs in "Open questions," not silence.
 - Each AC line carries its own `(traces: US-x)` tag inline, in the Acceptance Criteria
   section.
 - The `## Traceability` section is a table with columns `AC-id | US-id | module | task-id`.
-- `module` must be one of the values declared in the spec header (`server|client|reviewer-core|e2e|cross-cutting`) — never a free-text guess.
+- `module` must be one of the values declared in the spec header (`server|client|reviewer-core|mcp|e2e|cross-cutting`) — never a free-text guess.
 - `task-id` is left blank (`—`) when the spec is authored. It is filled in later by
   `implementation-planner` once tasks are cut from the spec. A spec-author agent must
   never invent a task-id.

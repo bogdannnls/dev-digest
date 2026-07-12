@@ -32,5 +32,5 @@
 
 ## More
 - [README.md](README.md)
-- [docs/](docs/), [specs/](specs/), [INSIGHTS.md](INSIGHTS.md)
+- [docs/](docs/), [specs/](specs/) — SDD requirement specs authored by `spec-creator`, [INSIGHTS.md](INSIGHTS.md)
 - Root: [../CLAUDE.md](../CLAUDE.md)
