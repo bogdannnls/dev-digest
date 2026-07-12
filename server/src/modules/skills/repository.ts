@@ -22,6 +22,7 @@ export interface InsertSkill {
   enabled?: boolean;
   source?: SkillSource;
   evidenceFiles?: string[] | null;
+  attachedContextPaths?: string[];
 }
 
 export interface UpdateSkill {
@@ -30,6 +31,7 @@ export interface UpdateSkill {
   type?: SkillType;
   body?: string;
   enabled?: boolean;
+  attachedContextPaths?: string[];
 }
 
 export class SkillsRepository {
@@ -65,6 +67,9 @@ export class SkillsRepository {
           source: values.source ?? 'manual',
           version: INITIAL_SKILL_VERSION,
           evidenceFiles: values.evidenceFiles ?? null,
+          ...(values.attachedContextPaths !== undefined
+            ? { attachedContextPaths: values.attachedContextPaths }
+            : {}),
         })
         .returning();
       if (!row) {
@@ -103,6 +108,13 @@ export class SkillsRepository {
           ...(patch.type !== undefined ? { type: patch.type } : {}),
           ...(patch.body !== undefined ? { body: patch.body } : {}),
           ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+          // NOTE: intentionally NOT part of `isContentChange` / `contentChanged`
+          // — skills only version on name/description/type/body (L05 spec:
+          // "Versioning (agent only)"). A path-only change must not bump the
+          // skill version or write a skill_versions row.
+          ...(patch.attachedContextPaths !== undefined
+            ? { attachedContextPaths: patch.attachedContextPaths }
+            : {}),
           ...(contentChanged ? { version: nextVersion } : {}),
         })
         .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
