@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyFiles } from './classifier.js';
+import { classifyFiles } from './smart-diff-classifier.js';
 
 /** Shorthand for a zero-diff file (patterns win, size override irrelevant). */
 function file(path: string, additions = 0, deletions = 0) {

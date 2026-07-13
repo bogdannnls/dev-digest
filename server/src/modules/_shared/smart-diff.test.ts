@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { composeSmartDiff, type ComposerFile, type ComposerFinding } from './service.js';
+import { composeSmartDiff, type ComposerFile, type ComposerFinding } from './smart-diff.js';
 
 /** Shorthand for a changed file. */
 function file(path: string, additions = 0, deletions = 0): ComposerFile {

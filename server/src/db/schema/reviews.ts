@@ -98,4 +98,13 @@ export const prBrief = pgTable('pr_brief', {
     .primaryKey()
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   json: jsonb('json').notNull(),
+  headSha: text('head_sha').notNull(),
+  reviewId: uuid('review_id').references(() => reviews.id, { onDelete: 'set null' }),
+  intentComputedAt: timestamp('intent_computed_at', { withTimezone: true }).notNull(),
+  riskLevel: text('risk_level').notNull(),
+  model: text('model'),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  costUsd: numeric('cost_usd', { precision: 10, scale: 6 }).notNull().default('0'),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -20,6 +20,8 @@
     "configuration": "Configuration",
     "stats": "Stats",
     "promptAssembly": "Prompt assembly",
+    "specsRead": "Specs read",
+    "noSpecsRead": "No documents were read for this run.",
     "toolCalls": "Tool calls",
     "rawOutput": "Raw output",
     "noToolCalls": "No tool calls recorded.",
@@ -32,9 +34,7 @@
       "model": "Model",
       "provider": "Provider",
       "memoryPulled": "Memory pulled",
-      "specsRead": "Specs read",
-      "items": "{count, plural, one {# item} other {# items}}",
-      "none": "none"
+      "items": "{count, plural, one {# item} other {# items}}"
     },
     "stat": {
       "duration": "DURATION",

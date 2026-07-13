@@ -168,6 +168,37 @@ describe('AI contracts parse fixtures', () => {
     });
     expect(trace.tool_calls).toHaveLength(1);
   });
+
+  it('RunTrace — `specs_tokens` is additive/nullish and stays index-aligned with `specs_read` (L05 T4)', () => {
+    // Old traces (no `specs_tokens` at all) must still parse — additive, non-breaking.
+    const legacy = RunTrace.parse({
+      config: { agent: 'A', model: 'm', source: 'local' },
+      stats: { duration_ms: 1, tokens_in: 0, tokens_out: 0, findings: 0, grounding: '0/0 passed' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    });
+    expect(legacy.specs_tokens ?? null).toBeNull();
+
+    // A populated trace: specs_tokens[i] is the token count for specs_read[i] —
+    // same length and order, never widening specs_read's own element type.
+    const populated = RunTrace.parse({
+      config: { agent: 'A', model: 'm', source: 'local' },
+      stats: { duration_ms: 1, tokens_in: 0, tokens_out: 0, findings: 0, grounding: '0/0 passed' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '',
+      memory_pulled: [],
+      specs_read: ['specs/a.md', 'docs/b.md'],
+      specs_tokens: [120, 340],
+      log: [],
+    });
+    expect(populated.specs_read.every((p) => typeof p === 'string')).toBe(true);
+    expect(populated.specs_tokens).toHaveLength(populated.specs_read.length);
+  });
 });
 
 describe('platform DTOs', () => {

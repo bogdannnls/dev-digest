@@ -113,6 +113,20 @@
       "when": 1783167083757,
       "tag": "0015_pr_intent_overview",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783808223391,
+      "tag": "0016_attached_context_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783927305257,
+      "tag": "0017_extend_pr_brief",
+      "breakpoints": true
     }
   ]
 }

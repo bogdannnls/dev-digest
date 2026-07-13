@@ -225,6 +225,16 @@ export interface GitClient {
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
+  /** Whether `repo` has a clone on disk (the "not cloned" check, without callers touching `fs` themselves). */
+  cloneExists(repo: RepoRef): Promise<boolean>;
+  /** Size + mtime of a clone-relative file; `null` if missing — fail-soft, callers decide what "no stat" means. */
+  statFile(repo: RepoRef, relPath: string): Promise<{ size: number; mtime: Date } | null>;
+  /**
+   * All regular-file paths under the clone root, relative to it (posix-style,
+   * `/`-separated even on Windows), via a recursive walk that never follows a
+   * symlink (see `SimpleGitClient.walkFiles` for the safety property).
+   */
+  walkFiles(repo: RepoRef): Promise<string[]>;
 }
 
 // ---------- CodeIndex (ripgrep + tree-sitter) ----------

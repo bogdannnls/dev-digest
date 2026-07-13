@@ -9,11 +9,11 @@ import type {
   ReviewStrategy,
 } from '@devdigest/shared';
 import { reviewPullRequest } from '@devdigest/reviewer-core';
-import { NotFoundError } from '../../platform/errors.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import type { SkillsEvalResult, SkillsEvalSide } from '../../vendor/shared/contracts/knowledge.js';
 import { loadFixture } from './eval-fixtures.js';
 import { AgentsRepository } from './repository.js';
-import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { toAgentDto, toAgentVersionDto, dedupeFirstOccurrence } from './helpers.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -50,6 +50,7 @@ export interface UpdateAgentInput {
   ci_fail_on?: CiFailOn;
   repo_intel?: boolean;
   enabled?: boolean;
+  attached_context_paths?: string[];
 }
 
 export class AgentsService {
@@ -92,11 +93,40 @@ export class AgentsService {
     return toAgentDto(row);
   }
 
+  /**
+   * `contextRepoId` is the transient, never-persisted "governing repo" (AC-12c
+   * — the workspace's currently-active repo selection at save time, supplied
+   * by the route from `UpdateAgentBody.repo_id`) used ONLY to validate
+   * `patch.attached_context_paths` against a freshly-computed discovery set.
+   * It is not part of `UpdateAgentInput`/the DB and must be provided whenever
+   * `patch.attached_context_paths` is present (enforced by the route's Zod
+   * `.refine()`; re-checked here so a direct service caller can't skip it).
+   */
   async update(
     workspaceId: string,
     id: string,
     patch: UpdateAgentInput,
+    contextRepoId?: string,
   ): Promise<Agent | undefined> {
+    let attachedContextPaths: string[] | undefined;
+    if (patch.attached_context_paths !== undefined) {
+      if (!contextRepoId) {
+        throw new ValidationError('repo_id is required when attached_context_paths is present');
+      }
+      const deduped = dedupeFirstOccurrence(patch.attached_context_paths);
+      // AC-33: only ever trust a path that appears in a discovery pass run
+      // FRESH against the repo's current clone state — never storage alone.
+      // A repo with no clone yet (`listPaths` → null) has no known paths, so
+      // any non-empty submitted list is rejected the same way an unknown path
+      // would be.
+      const known = (await this.container.context.listPaths(workspaceId, contextRepoId)) ?? new Set<string>();
+      const unknown = deduped.filter((p) => !known.has(p));
+      if (unknown.length > 0) {
+        throw new ValidationError('Unknown attached document path(s)', { paths: unknown });
+      }
+      attachedContextPaths = deduped;
+    }
+
     const row = await this.repo.update(workspaceId, id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
@@ -108,6 +138,7 @@ export class AgentsService {
       ...(patch.ci_fail_on !== undefined ? { ciFailOn: patch.ci_fail_on } : {}),
       ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...(attachedContextPaths !== undefined ? { attachedContextPaths } : {}),
     });
     return row ? toAgentDto(row) : undefined;
   }

@@ -3,10 +3,11 @@
 ## What this is
 Local-first, AI-powered PR review studio. See [README.md](README.md) for the elevator pitch and quick start.
 
-## Packages (4, no monorepo workspace)
+## Packages (5, no monorepo workspace)
 - `server/`         Fastify API + Postgres + orchestration
 - `client/`         Next.js 15 UI
 - `reviewer-core/`  Pure review engine (no I/O)
+- `mcp/`            Local stdio MCP server — 5 tools over the API
 - `e2e/`            agent-browser flows (deterministic, no LLM)
 
 Each package has its own `CLAUDE.md` — read it before working there.
@@ -45,5 +46,5 @@ Before marking work ready, if the diff touches `client/` or `server/`, run `/pr-
 ## Where to look
 - Test philosophy + suite map: [TESTING.md](TESTING.md)
 - Deep dives: [docs/](docs/)
-- Cross-package RFCs / specs: [specs/](specs/)
+- Cross-package RFCs / specs: [specs/](specs/) — cross-cutting SDD requirement specs (2+ modules), authored by `spec-creator`
 - Cross-cutting learnings: [INSIGHTS.md](INSIGHTS.md)

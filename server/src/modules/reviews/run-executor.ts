@@ -8,6 +8,7 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+import { RepoNotClonedError, ProjectContextError } from '../../platform/errors.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -152,6 +153,14 @@ export class ReviewRunExecutor {
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
 
+    // L05 T4 — populated by `buildSpecsDigest` inside the try block below.
+    // Hoisted above the try so the failure path (catch, below) can still
+    // report what was actually read if a LATER step fails (e.g. the LLM call
+    // itself) — while staying the empty default when the pre-flight check
+    // itself is what failed (nothing was read yet).
+    let specsRead: string[] = [];
+    let specsTokens: number[] = [];
+
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
@@ -192,6 +201,20 @@ export class ReviewRunExecutor {
         runLog.info(`Loaded ${skillBodies.length} skill body/bodies for agent "${agent.name}"`);
       }
 
+      // L05 T4 — Project context: the effective attached-document set (agent's
+      // own paths + enabled linked skills' paths, deduped), pre-flight
+      // re-verified against a FRESH discovery pass, then read + tokenized.
+      // Fail-CLOSED (unlike the repo-intel digests above): any offending path
+      // throws here, before any file read and before the LLM call below.
+      // Deliberately NOT gated by `repoIntelOn` (unlike buildCallersDigest/
+      // buildRepoMapDigest/buildRankNote above): attached project context is
+      // an explicit per-agent/per-skill user opt-in, orthogonal to the
+      // repo-intel auto-enrichment toggle — "repo-intel off" alone does not
+      // imply "identical baseline prompt" once documents are attached.
+      const specsDigest = await this.buildSpecsDigest(agent, repo, workspaceId, runLog);
+      specsRead = specsDigest.specsRead;
+      specsTokens = specsDigest.tokens;
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -212,6 +235,10 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // L05 T4 — Project context: attached specs/docs/insights content, read
+        // fresh above. Omitted when the effective set is empty (AC-24) — the
+        // prompt is then identical to today's always-empty-specs shape.
+        ...(specsDigest.specs.length > 0 ? { specs: specsDigest.specs } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -289,7 +316,11 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        // L05 T4 — AC-25/26: paths actually read, in effective-set order, and
+        // their per-document token-count estimate (index-aligned with
+        // `specs_read`).
+        specs_read: specsRead,
+        specs_tokens: specsTokens,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -318,7 +349,10 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, specsRead, specsTokens),
+        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -423,6 +457,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    specsRead: string[] = [],
+    specsTokens: number[] = [],
   ): RunTrace {
     return {
       config: {
@@ -438,8 +474,112 @@ export class ReviewRunExecutor {
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
-      specs_read: [],
+      // L05 T4 — populated when a pre-flight/LLM failure happens AFTER specs
+      // were already read; stays `[]` (the default) when the failure is the
+      // pre-flight check itself, since nothing was read yet in that case.
+      specs_read: specsRead,
+      specs_tokens: specsTokens,
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     };
+  }
+
+  /**
+   * L05 T4 — build the "Project context" digest: the effective attached-
+   * document set for this agent (its own attached paths, then its enabled
+   * linked skills' attached paths in skill order, deduped first-occurrence-
+   * wins — AC-18, AC-19), pre-flight-validated against a FRESH discovery pass
+   * (AC-22, AC-29, AC-33), then read + tokenized (AC-25, AC-26).
+   *
+   * Fail-CLOSED, NOT fail-soft like `buildCallersDigest`/`buildRepoMapDigest`
+   * above: any path outside the fresh whitelist — traversal, absolute,
+   * symlink-escape, a renamed/deleted file, or "repo not cloned" with a
+   * non-empty effective set — logs the exact offending path(s) via
+   * `runLog.error` and THROWS, before any file is read and before
+   * `reviewPullRequest` (i.e. before any LLM call) — AC-30, AC-31, AC-32.
+   * Callers must let this propagate; it is meant to fail the run.
+   *
+   * Takes the full repo row (not just its id) — `runOneAgent` already has it
+   * (loaded once for the whole batch), and `container.git.readFile` needs the
+   * `{ owner, name }` RepoRef shape, exactly like `loadDiff` does above.
+   */
+  private async buildSpecsDigest(
+    agent: AgentRow,
+    repo: typeof schema.repos.$inferSelect,
+    workspaceId: string,
+    runLog: RunLogger,
+  ): Promise<{ specs: string[]; specsRead: string[]; tokens: number[] }> {
+    // ---- 1. Effective set: agent's own paths first, then each ENABLED
+    // linked skill's paths in skill order; dedupe by path, first occurrence
+    // wins (AC-18). A disabled skill contributes nothing (AC-19). Null/absent/
+    // empty lists on either side are treated identically — no-op (AC-14). ----
+    const seen = new Set<string>();
+    const effective: string[] = [];
+    const addAll = (paths: string[] | null | undefined) => {
+      for (const p of paths ?? []) {
+        if (seen.has(p)) continue;
+        seen.add(p);
+        effective.push(p);
+      }
+    };
+    addAll(agent.attachedContextPaths);
+    const linkedSkills = await this.agents.linkedSkills(agent.id);
+    for (const link of linkedSkills) {
+      if (!link.enabled) continue;
+      addAll(link.skill.attachedContextPaths);
+    }
+
+    if (effective.length === 0) return { specs: [], specsRead: [], tokens: [] };
+
+    // ---- 2. Pre-flight — re-verify EVERY path against a FRESH discovery
+    // pass (AC-22, AC-29, AC-33): a path that was valid at attach time is
+    // NEVER trusted from storage alone. Any escape/traversal/symlink-escape
+    // path, any renamed/deleted file, or a wholly unresolvable repo (no
+    // clone) fails the run immediately — before any read, before the LLM
+    // call (AC-30, AC-31). ---------------------------------------------------
+    const known = await this.container.context.listPaths(workspaceId, repo.id);
+    if (known === null) {
+      const msg =
+        `Project context pre-flight failed: repo "${repo.owner}/${repo.name}" has no clone on ` +
+        `disk, but ${effective.length} attached document(s) are configured: ${effective.join(', ')}`;
+      runLog.error(msg);
+      throw new RepoNotClonedError(msg);
+    }
+    const offending = effective.filter((p) => !known.has(p));
+    if (offending.length > 0) {
+      const msg =
+        `Project context pre-flight failed: attached document(s) not found in the current ` +
+        `discovery set: ${offending.join(', ')}`;
+      runLog.error(msg);
+      throw new ProjectContextError(msg);
+    }
+
+    // ---- 3. Read + tokenize, in effective-set order (AC-23, AC-25, AC-26). -
+    // TOCTOU guard: a path can still vanish BETWEEN the fresh listPaths() pass
+    // above and this read (e.g. a concurrent `resync`'s `git reset --hard` on
+    // the same clone) — the same race T1's `ContextService.readOne` already
+    // guards against. Never let a raw fs error (whose `.message` embeds the
+    // ABSOLUTE clone path) escape to `runLog.error`/the persisted trace log —
+    // map it to a clean, path-only message instead.
+    const ref = { owner: repo.owner, name: repo.name };
+    const specs: string[] = [];
+    const specsRead: string[] = [];
+    const tokens: number[] = [];
+    for (const path of effective) {
+      let content: string;
+      try {
+        content = await this.container.git.readFile(ref, path);
+      } catch {
+        const msg = `Project context: document vanished during read: ${path}`;
+        runLog.error(msg);
+        throw new ProjectContextError(msg);
+      }
+      specs.push(content);
+      specsRead.push(path);
+      tokens.push(this.container.tokenizer.count(content));
+    }
+    runLog.info(
+      `Project context: ${specsRead.length} document(s) attached (${tokens.reduce((a, b) => a + b, 0)} token(s) total)`,
+    );
+    return { specs, specsRead, tokens };
   }
 }
