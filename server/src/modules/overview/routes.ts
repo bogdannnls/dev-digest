@@ -4,12 +4,13 @@ import { z } from 'zod';
 import type { PrOverviewBriefResponse, PrIntentResponse, RunEvent } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { OverviewService } from './service.js';
+import { OverviewService, type PrBlastRadiusResponse } from './service.js';
 import { IntentService } from './intent/service.js';
 
 /**
  * PR Overview tab — Slice A + Intent Layer (P1).
  *   GET  /pulls/:id/overview/brief            → PrOverviewBriefResponse
+ *   GET  /pulls/:id/overview/blast-radius     → PrBlastRadiusResponse
  *   GET  /pulls/:id/overview/intent           → PrIntentResponse (read-through cache)
  *   GET  /pulls/:id/overview/intent/stream    → SSE stream of RunEvent for a compute/refresh run
  *   POST /pulls/:id/overview/intent/refresh   → force recompute; 202 + { runId }
@@ -32,6 +33,15 @@ export default async function overviewRoutes(appBase: FastifyInstance) {
     async (req): Promise<PrOverviewBriefResponse> => {
       const { workspaceId } = await getContext(container, req);
       return service.getBrief(workspaceId, req.params.id);
+    },
+  );
+
+  app.get(
+    '/pulls/:id/overview/blast-radius',
+    { schema: { params: IdParams } },
+    async (req): Promise<PrBlastRadiusResponse> => {
+      const { workspaceId } = await getContext(container, req);
+      return service.getBlastRadius(workspaceId, req.params.id);
     },
   );
 

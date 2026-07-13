@@ -30,6 +30,13 @@ export const EXCLUDED_DIRS = [
 export const MAX_CALLERS_PER_SYMBOL = 20;
 
 /**
+ * [Blast] Cap on distinct 2nd-hop importer files walked for transitive endpoint
+ * reachability, so a hot 1-hop file with a huge fan-in stays bounded (one extra
+ * `file_facts` read, no recursion).
+ */
+export const MAX_SECOND_HOP_FILES = 200;
+
+/**
  * [T1] Bumped whenever the AST extractor or symbol schema changes. A mismatch
  * with `repo_index_state.indexer_version` forces a full reindex.
  *

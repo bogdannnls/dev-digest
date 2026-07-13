@@ -8,6 +8,7 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, API_BASE, ApiError } from "../api";
 import type {
+  BlastRadius,
   PrIntentDto,
   PrIntentResponse,
   PrIntentStaleReason,
@@ -23,6 +24,32 @@ export function useOverviewBrief(prId: string | null | undefined) {
   return useQuery<PrOverviewBriefResponse>({
     queryKey: ["overview-brief", prId],
     queryFn: () => api.get<PrOverviewBriefResponse>(`/pulls/${prId}/overview/brief`),
+    enabled: !!prId,
+    staleTime: 30_000,
+  });
+}
+
+/** Local mirror of the `GET /pulls/:id/overview/blast-radius` envelope — kept
+    local (not in @devdigest/shared) per the `RepoIntelState` precedent in
+    `repo-intel.ts`; `BlastRadius` itself is still the shared contract type. */
+export interface PrBlastRadiusResponse {
+  status: "ready" | "degraded";
+  reason?: string;
+  data: BlastRadius;
+  /** Commit the caller line numbers are relative to — caller file:line links pin
+      to this, NOT the PR head (a different commit). Absent on the degraded path. */
+  indexedSha?: string;
+}
+
+/**
+ * Blast Radius tab's data source. Synchronous aggregation like Brief — cheap
+ * enough to refetch on mount, staleTime keeps the view stable across tab
+ * switches.
+ */
+export function useOverviewBlastRadius(prId: string | null | undefined) {
+  return useQuery<PrBlastRadiusResponse>({
+    queryKey: ["overview-blast-radius", prId],
+    queryFn: () => api.get<PrBlastRadiusResponse>(`/pulls/${prId}/overview/blast-radius`),
     enabled: !!prId,
     staleTime: 30_000,
   });

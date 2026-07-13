@@ -57,7 +57,11 @@ export default function PRDetailPage() {
     if (prId) qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
   };
 
-  const tab = search.get("tab") ?? "overview";
+  // Whitelist known tab keys; unknown/stale values (e.g. a bookmarked ?tab=blast
+  // from before the Blast tab became an Overview card) fall back to "overview"
+  // rather than rendering an empty body.
+  const rawTab = search.get("tab");
+  const tab = rawTab === "findings" || rawTab === "diff" ? rawTab : "overview";
   const traceRunId = search.get("trace");
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
@@ -134,7 +138,16 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prId={prId} prBody={pr.body} />}
+        {tab === "overview" && (
+          <OverviewTab
+            prId={prId}
+            prBody={pr.body}
+            repoId={repoId}
+            repoFullName={repoFullName}
+            headSha={pr.head_sha}
+            provider={activeRepo?.provider ?? null}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab

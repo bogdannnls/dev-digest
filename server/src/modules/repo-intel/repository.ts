@@ -128,6 +128,8 @@ export interface ResolvedCallerRow {
   toSymbol: string;
   line: number;
   rank: number;
+  /** Declaring file of `toSymbol` — always one of the queried `declFiles`. */
+  declFile: string;
 }
 
 export class RepoIntelRepository {
@@ -436,6 +438,30 @@ export class RepoIntelRepository {
       .where(eq(t.fileEdges.repoId, repoId));
   }
 
+  /**
+   * Reverse edge lookup: every `{fromFile,toFile}` edge whose `toFile` is one of
+   * `toFiles` — i.e. the files that IMPORT any of `toFiles`. Served by the
+   * `file_edges_repo_to_idx (repo_id, to_file)` index. Chunked to stay under the
+   * Postgres bind-parameter limit for large caller sets (blast 2-hop walk).
+   */
+  async getImporters(
+    repoId: string,
+    toFiles: string[],
+  ): Promise<Array<{ fromFile: string; toFile: string }>> {
+    if (toFiles.length === 0) return [];
+    const out: Array<{ fromFile: string; toFile: string }> = [];
+    const CHUNK = 500;
+    for (let i = 0; i < toFiles.length; i += CHUNK) {
+      const slice = toFiles.slice(i, i + CHUNK);
+      const rows = await this.db
+        .select({ fromFile: t.fileEdges.fromFile, toFile: t.fileEdges.toFile })
+        .from(t.fileEdges)
+        .where(and(eq(t.fileEdges.repoId, repoId), inArray(t.fileEdges.toFile, slice)));
+      out.push(...rows);
+    }
+    return out;
+  }
+
   /** `{path, percentile}` for the given paths (smart-diff / run-executor). */
   async getFileRankFor(repoId: string, paths: string[]): Promise<FileRankRow[]> {
     if (paths.length === 0) return [];
@@ -506,12 +532,13 @@ export class RepoIntelRepository {
     names: string[],
   ): Promise<ResolvedCallerRow[]> {
     if (declFiles.length === 0 || names.length === 0) return [];
-    return this.db
+    const rows = await this.db
       .select({
         fromPath: t.references.fromPath,
         toSymbol: t.references.toSymbol,
         line: t.references.line,
         rank: t.fileRank.rank,
+        declFile: t.references.declFile,
       })
       .from(t.references)
       .innerJoin(
@@ -528,6 +555,10 @@ export class RepoIntelRepository {
           inArray(t.references.toSymbol, names),
         ),
       );
+    // `declFile` is NOT NULL here by construction: the WHERE clause restricts to
+    // rows whose decl_file matched `declFiles` (a list of real paths), so the
+    // column (nullable in the schema) is always populated for the returned set.
+    return rows.map((r) => ({ ...r, declFile: r.declFile as string }));
   }
 
   /** Per-file facts (endpoints/crons) for the given files. */
