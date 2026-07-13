@@ -386,8 +386,12 @@ not silently guessed):
 - **Accessibility.** The "Review focus" list is a real ordered list with keyboard-navigable
   links (AC-44), not a div soup of clickable spans.
 - **Internationalization.** All new user-facing strings (the `not_ready` message, the
-  "Review focus" heading, stale-reason banner text) go through the existing i18n message
-  catalog like every other Overview-tab string — no hardcoded English literals introduced.
+  "Review focus" heading, stale-reason banner text) go through the existing `next-intl` message
+  catalog — the pattern already used in Settings and `VerdictBanner`. NOTE (corrected against
+  code 2026-07-13): the sibling Overview cards this feature visually matches (`IntentCard`,
+  `PrBriefCard`) are **not** i18n'd today — they use hardcoded English literals. This feature
+  adopts i18n regardless; retrofitting the two sibling cards for consistency is out of scope
+  (tracked as a follow-up, see plan Risk 3).
 
 ## Interfaces & flows
 

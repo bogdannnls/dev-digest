@@ -2,7 +2,7 @@
 
 - **Source spec:** [`specs/2026-07-13-why-risk-brief-spec.md`](../../../specs/2026-07-13-why-risk-brief-spec.md) — SPEC-02 (45 EARS ACs, approved)
 - **Design:** [`docs/superpowers/specs/2026-07-13-why-risk-brief-design.md`](../specs/2026-07-13-why-risk-brief-design.md)
-- **execution_mode:** `multi` *(recommended by planner; confirm before /sdd)*
+- **execution_mode:** `multi` *(confirmed by user 2026-07-13)*
 - **Author:** `implementation-planner` (read-only planning pass)
 - **Date:** 2026-07-13
 
