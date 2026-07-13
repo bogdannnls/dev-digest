@@ -52,8 +52,9 @@ not silently guessed):
   from pre-computed inputs, in one structured LLM call.
 - `reviewFocus[]` is grounded in real findings by id — never a model-emitted file:line —
   making a citation-gate bypass structurally impossible for this call.
-- `riskLevel` is LLM-assigned but deterministically floored: any blocker/critical finding
-  in the input set forces `riskLevel` to at least `'high'`.
+- `riskLevel` is LLM-assigned but deterministically floored: any blocker-tier finding
+  (`'CRITICAL'`, matched via the existing case-insensitive `BLOCKER_SEVERITIES` set) in the
+  input set forces `riskLevel` to at least `'high'`.
 - Cost and tokens for the synthesis call are tracked and displayed, consistent with other
   LLM-backed cards (Intent, reviews).
 - Read-through cache with staleness detection (`head_sha`, `new_review`, `intent` drift) and
@@ -81,7 +82,7 @@ not silently guessed):
 - **US-2** — As a reviewer, I see a "Review focus — read these first" numbered list of the
   highest-priority findings, each linking to its file:line, so I know where to start.
 - **US-3** — As a reviewer, I see an overall risk level for the PR that never under-rates a
-  PR containing a blocker or critical finding, regardless of what the model itself assigns.
+  PR containing a blocker-tier (`CRITICAL`) finding, regardless of what the model itself assigns.
 - **US-4** — As a reviewer, I see the cost and token usage of the synthesis call, consistent
   with how other LLM-backed cards on this tab show their cost.
 - **US-5** — As a reviewer, I can manually refresh the brief when the PR has moved on (new
@@ -169,16 +170,20 @@ not silently guessed):
 
 **`riskLevel` floor**
 
-- AC-14. IF the input finding set contains at least one finding with severity `'blocker'`
-  or `'critical'`, THEN the system shall set `riskLevel` to at least `'high'`, overriding a
-  lower model-assigned value. (traces: US-3) (verify: `service.test.ts` — new case: mocked
-  model returns `riskLevel: 'low'` with a blocker finding present; asserts persisted/returned
-  `riskLevel === 'high'`)
-- AC-15. WHILE the input finding set contains no `blocker`/`critical` finding, the system
-  shall preserve the model-assigned `riskLevel` unchanged (the floor is a lower bound only,
-  never adjusts a value downward). (traces: US-3) (verify: `service.test.ts` — new case: no
-  blocker/critical finding present; asserts persisted `riskLevel` equals the mocked model
-  output verbatim)
+- AC-14. IF the input finding set contains at least one finding whose severity is in the
+  established blocker-tier set (`BLOCKER_SEVERITIES` in `server/src/modules/overview/brief/
+  aggregate.ts` — a case-insensitive match against `{blocker, critical}`; the real finding
+  severity enum is `['CRITICAL','WARNING','SUGGESTION']`, so this matches `'CRITICAL'` today),
+  THEN the system shall set `riskLevel` to at least `'high'`, overriding a lower model-assigned
+  value. The floor MUST reuse the existing blocker-tier semantics, not a new exact-string
+  comparison. (traces: US-3) (verify: `service.test.ts` — new case: mocked model returns
+  `riskLevel: 'low'` with a real `'CRITICAL'`-severity finding present; asserts
+  persisted/returned `riskLevel === 'high'`)
+- AC-15. WHILE the input finding set contains no blocker-tier (`'CRITICAL'`) finding, the
+  system shall preserve the model-assigned `riskLevel` unchanged (the floor is a lower bound
+  only, never adjusts a value downward). (traces: US-3) (verify: `service.test.ts` — new case:
+  only `WARNING`/`SUGGESTION` findings present; asserts persisted `riskLevel` equals the mocked
+  model output verbatim)
 
 **States**
 
