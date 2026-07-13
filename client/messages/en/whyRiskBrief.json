@@ -1,0 +1,38 @@
+{
+  "title": "Why + Risk Brief",
+  "refresh": "Refresh",
+  "notReady": {
+    "message": "Waiting on {inputs} before this can be computed.",
+    "and": "and",
+    "missingIntent": "the Intent extraction",
+    "missingReview": "a completed review"
+  },
+  "computing": {
+    "progress": "Synthesizing brief…"
+  },
+  "stale": {
+    "banner": "Stale — {reasons}.",
+    "reason": {
+      "head_sha": "the PR was updated",
+      "new_review": "a new review completed",
+      "intent": "the intent was recomputed"
+    }
+  },
+  "riskLevel": {
+    "high": "High risk",
+    "medium": "Medium risk",
+    "low": "Low risk"
+  },
+  "reviewFocus": {
+    "heading": "Review focus — read these first",
+    "unresolvedTitle": "Finding"
+  },
+  "error": {
+    "generic": "Couldn't load the Why + Risk Brief."
+  },
+  "refreshError": {
+    "rateLimited": "You just refreshed — try again in {seconds}s",
+    "rateLimitedGeneric": "You just refreshed — try again in a moment",
+    "generic": "Couldn't refresh the Why + Risk Brief."
+  }
+}
