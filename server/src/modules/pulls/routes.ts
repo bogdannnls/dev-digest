@@ -9,33 +9,27 @@ import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
 import type { Db } from '../../db/client.js';
-import { composeSmartDiff, type ComposerFile, type ComposerFinding } from './smart-diff/service.js';
+import { composeSmartDiff, type ComposerFile, type ComposerFinding } from '../_shared/smart-diff.js';
+import { latestReviewsByPr } from '../_shared/latest-review.js';
 
 /**
  * Compute per-severity findings (counts + top-5 titles) for the given PR ids,
  * scoped to each PR's latest 'review' kind. Returns a Map keyed by pr_id.
  * Used by both the list endpoint and the detail endpoint to keep the
- * "latest review" semantics consistent.
+ * "latest review" semantics consistent. Exported so other consumers (e.g.
+ * `overview/brief-synth/assemble-input.test.ts`, SPEC-02 AC-11) can assert
+ * they derive the same finding set from the same "latest review" definition.
  */
-async function computeFindingsByPr(
+export async function computeFindingsByPr(
   db: Db,
   prIds: string[],
 ): Promise<Map<string, ReturnType<typeof emptyFindingsBuckets>>> {
   const out = new Map<string, ReturnType<typeof emptyFindingsBuckets>>();
   if (prIds.length === 0) return out;
 
-  // Latest review per PR (kind='review'), reusing the score-query semantics.
-  const reviewRows = await db
-    .select({ id: t.reviews.id, prId: t.reviews.prId })
-    .from(t.reviews)
-    .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
-    .orderBy(desc(t.reviews.createdAt));
-
-  const latestReviewIdByPr = new Map<string, string>();
-  for (const rv of reviewRows) {
-    if (!latestReviewIdByPr.has(rv.prId)) latestReviewIdByPr.set(rv.prId, rv.id);
-  }
-  const latestReviewIds = Array.from(latestReviewIdByPr.values());
+  // Latest review per PR (kind='review') — shared definition, see latest-review.ts.
+  const latestReviewByPr = await latestReviewsByPr(db, prIds);
+  const latestReviewIds = Array.from(latestReviewByPr.values()).map((r) => r.id);
   if (latestReviewIds.length === 0) return out;
 
   // Per-severity finding counts, scoped to the latest review per PR.

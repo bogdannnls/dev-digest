@@ -7,8 +7,8 @@
  * size-override pass that can reclassify an unfamiliar-extension `core` file
  * to `boilerplate` when it crosses the changed-lines threshold.
  *
- * Consumes constants + helpers from `./patterns.js` (T1). Consumed by the
- * composer (T3).
+ * Consumes constants + helpers from `./smart-diff-patterns.js` (T1). Consumed
+ * by the composer (T3).
  */
 
 import type { SmartDiffRole } from '@devdigest/shared';
@@ -34,7 +34,7 @@ import {
   ENV_BASENAME_PREFIX,
   FAMILIAR_EXTENSIONS,
   SIZE_OVERRIDE_THRESHOLD_LINES,
-} from './patterns.js';
+} from './smart-diff-patterns.js';
 
 /** Minimal shape the classifier needs from a changed file. */
 export interface SmartDiffClassifierInput {

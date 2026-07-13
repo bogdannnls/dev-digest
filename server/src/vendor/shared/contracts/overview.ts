@@ -3,10 +3,10 @@ import { z } from 'zod';
 /**
  * PR Overview tab — Slice A: Brief.
  *
- * NOTE: this is intentionally NOT named `PrBrief` because `./brief.ts`
- * already exports a `PrBrief` Zod that represents a different composite
- * (intent + blast + risks + history). Slice A's "brief" is a small
- * aggregation card driven by existing reviews/findings/agent_runs.
+ * Named `PrOverviewBrief` (not `PrBrief`) to stay distinct from the
+ * building-block contracts in `./brief.ts` (Intent, BlastRadius, Risks,
+ * PrHistory, SmartDiff) — this is a small aggregation card driven by
+ * existing reviews/findings/agent_runs, not a composite of those blocks.
  */
 export const PrOverviewBriefVerdict = z.enum([
   'approve',

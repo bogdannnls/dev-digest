@@ -3,11 +3,11 @@
  *
  * 15 assertions, 5 per SmartDiffRole. Uses the singular `classifyFile(path)`
  * surface (no size input). Full internal coverage (priority order, size
- * override, edge cases) lives in `smart-diff/classifier.test.ts`.
+ * override, edge cases) lives in `_shared/smart-diff-classifier.test.ts`.
  */
 
 import { describe, it, expect } from 'vitest';
-import { classifyFile } from './smart-diff/classifier.js';
+import { classifyFile } from '../_shared/smart-diff-classifier.js';
 
 describe('classifyFile — boilerplate', () => {
   it('classifies pnpm-lock.yaml as boilerplate', () => {
