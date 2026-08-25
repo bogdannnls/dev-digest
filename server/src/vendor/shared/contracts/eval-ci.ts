@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Verdict, Finding } from './findings.js';
+import { Verdict, Finding, Severity, FindingCategory } from './findings.js';
 import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowledge.js';
 
 /**
@@ -64,26 +64,152 @@ export const EvalTrendPoint = z.object({
 });
 export type EvalTrendPoint = z.infer<typeof EvalTrendPoint>;
 
-/** Aggregate dashboard for an owner (agent/skill) or the whole workspace. */
+/** Expectation kind: whether the case's diff should surface a finding or not. */
+export const EvalExpectationKind = z.enum(['must_find', 'must_not_flag']);
+export type EvalExpectationKind = z.infer<typeof EvalExpectationKind>;
+
+/**
+ * What a case expects reviewer-core to find (or not find) in its diff fragment.
+ * Only `kind`, `file`, `start_line`, `end_line` participate in scoring (section
+ * 3.1 of the eval-pipeline contract); `severity`/`category`/`title` are
+ * display-only for the Evals-tab list — a scorer that reads them is broken.
+ */
+export const EvalExpectation = z
+  .object({
+    kind: EvalExpectationKind,
+    file: z.string().min(1),
+    start_line: z.number().int().min(1),
+    end_line: z.number().int().min(1),
+    severity: Severity.nullish(),
+    category: FindingCategory.nullish(),
+    title: z.string().nullish(),
+  })
+  .refine((v) => v.end_line >= v.start_line, {
+    message: 'end_line must be >= start_line',
+    path: ['end_line'],
+  });
+export type EvalExpectation = z.infer<typeof EvalExpectation>;
+
+/** Metadata carried on `eval_cases.input_meta` — a case's provenance. */
+export const EvalCaseMeta = z.object({
+  source_finding_id: z.string().nullish(),
+  source_pr_id: z.string().nullish(),
+  source_review_id: z.string().nullish(),
+  origin: z.enum(['finding', 'manual']),
+});
+export type EvalCaseMeta = z.infer<typeof EvalCaseMeta>;
+
+/** Create/update payload for a hand-written eval case (the Case Editor). */
+export const EvalCaseManualInput = z.object({
+  name: z.string().min(1),
+  input_diff: z.string().min(1),
+  expected_output: EvalExpectation,
+  notes: z.string().nullish(),
+});
+export type EvalCaseManualInput = z.infer<typeof EvalCaseManualInput>;
+
+/**
+ * A persisted run-batch row (one execution over a set of cases), returned by
+ * the API. `system_prompt` is deliberately absent — it can be multi-KB and
+ * this shape backs a runs table that renders dozens of rows; the full body is
+ * carried only by `EvalBatchDetail` / `EvalRunComparison`.
+ */
+export const EvalBatchRecord = z.object({
+  id: z.string(),
+  owner_kind: EvalOwnerKind,
+  owner_id: z.string(),
+  agent_version: z.number().int().nullable(),
+  model: z.string(),
+  provider: z.string(),
+  ran_at: z.string(),
+  finished_at: z.string().nullable(),
+  status: z.enum(['running', 'succeeded', 'failed']),
+  cases_total: z.number().int(),
+  traces_passed: z.number().int(),
+  recall: z.number().nullable(),
+  precision: z.number().nullable(),
+  citation_accuracy: z.number().nullable(),
+  duration_ms: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  error: z.string().nullable(),
+});
+export type EvalBatchRecord = z.infer<typeof EvalBatchRecord>;
+
+/** Full detail view of one batch: the record, its verbatim system prompt, and its per-case runs. */
+export const EvalBatchDetail = z.object({
+  batch: EvalBatchRecord,
+  system_prompt: z.string(),
+  cases: z.array(EvalRunRecord),
+});
+export type EvalBatchDetail = z.infer<typeof EvalBatchDetail>;
+
+/**
+ * Comparison of two batches for the same agent. `delta.X = b.X - a.X`, or
+ * `null` when either side is `null`. The client renders the prompt diff; the
+ * server ships both prompts verbatim and computes no diff.
+ */
+export const EvalRunComparison = z.object({
+  a: EvalBatchRecord,
+  b: EvalBatchRecord,
+  system_prompt_a: z.string(),
+  system_prompt_b: z.string(),
+  delta: z.object({
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
+    cost_usd: z.number().nullable(),
+  }),
+});
+export type EvalRunComparison = z.infer<typeof EvalRunComparison>;
+
+/** Per-agent summary row on the eval dashboard's landing view. */
+export const EvalDashboardAgentSummary = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  model: z.string(),
+  cases_total: z.number().int(),
+  last_run: EvalBatchRecord.nullable(),
+  trend: z.array(EvalTrendPoint),
+});
+export type EvalDashboardAgentSummary = z.infer<typeof EvalDashboardAgentSummary>;
+
+/** The eval-dashboard sidebar page's landing view — every agent plus a cross-agent recent-runs feed. */
+export const EvalDashboardIndex = z.object({
+  agents: z.array(EvalDashboardAgentSummary),
+  recent_runs: z.array(EvalBatchRecord.extend({ agent_name: z.string() })),
+});
+export type EvalDashboardIndex = z.infer<typeof EvalDashboardIndex>;
+
+/**
+ * Aggregate dashboard for an owner (agent/skill) or the whole workspace.
+ *
+ * v1.3: `current`'s three metrics and all of `delta` are `.nullable()` — an
+ * agent whose newest batch produced no findings has `precision === null`
+ * (section 3.4), and coercing that to `0` would make it indistinguishable
+ * from an agent that scored zero. `recent_runs` is per-run (`EvalBatchRecord`),
+ * not per-case (`EvalRunRecord`) — see contract section 2.8.
+ */
 export const EvalDashboard = z.object({
   owner_kind: EvalOwnerKind.nullable(),
   owner_id: z.string().nullable(),
   cases_total: z.number().int(),
   current: z.object({
-    recall: z.number(),
-    precision: z.number(),
-    citation_accuracy: z.number(),
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
     traces_passed: z.number().int(),
     traces_total: z.number().int(),
     cost_usd: z.number().nullable(),
   }),
   delta: z.object({
-    recall: z.number(),
-    precision: z.number(),
-    citation_accuracy: z.number(),
+    recall: z.number().nullable(),
+    precision: z.number().nullable(),
+    citation_accuracy: z.number().nullable(),
   }),
   trend: z.array(EvalTrendPoint),
-  recent_runs: z.array(EvalRunRecord),
+  recent_runs: z.array(EvalBatchRecord),
   alert: z.string().nullable(),
 });
 export type EvalDashboard = z.infer<typeof EvalDashboard>;
