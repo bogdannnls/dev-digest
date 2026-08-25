@@ -1,0 +1,1 @@
+export { WhyRiskBriefCard } from "./WhyRiskBriefCard";

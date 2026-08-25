@@ -51,3 +51,30 @@ export class RateLimitedError extends AppError {
     super('rate_limited', message, 429, details);
   }
 }
+
+/**
+ * Thrown by `modules/context` (Project Context reader, L05 T1) when a repo
+ * row exists but has no clone on disk yet. Distinct from `NotFoundError`
+ * (repo row itself missing) and from an empty discovered-document list (repo
+ * IS cloned, just has zero matching `.md` files) — AC-4 requires the client
+ * be able to tell these three states apart.
+ */
+export class RepoNotClonedError extends AppError {
+  constructor(message = 'Repo has not been cloned yet', details?: unknown) {
+    super('repo_not_cloned', message, 409, details);
+  }
+}
+
+/**
+ * Thrown by `modules/reviews`'s `buildSpecsDigest` pre-flight (L05 T4) when an
+ * attached document path fails re-verification against a fresh discovery
+ * pass, or vanishes between that pass and the read (a TOCTOU race — e.g. a
+ * concurrent `resync`'s `git reset --hard` on the same clone). Distinct from
+ * `RepoNotClonedError` (the repo itself has no clone at all, a different
+ * pre-flight condition in the same function).
+ */
+export class ProjectContextError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super('project_context_invalid', message, 422, details);
+  }
+}

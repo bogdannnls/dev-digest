@@ -38,7 +38,7 @@ const VERDICT_RANK: Record<'approve' | 'comment' | 'request_changes', number> = 
   request_changes: 2,
 };
 
-const BLOCKER_SEVERITIES = new Set(['blocker', 'critical']);
+export const BLOCKER_SEVERITIES = new Set(['blocker', 'critical']);
 
 /**
  * Pure aggregator for the Overview tab's PR Brief card.

@@ -13,8 +13,8 @@
  */
 
 import type { SmartDiff, SmartDiffFile, SmartDiffRole } from '@devdigest/shared';
-import { classifyFiles } from './classifier.js';
-import { TOO_BIG_TOTAL_LINES_THRESHOLD } from './patterns.js';
+import { classifyFiles } from './smart-diff-classifier.js';
+import { TOO_BIG_TOTAL_LINES_THRESHOLD } from './smart-diff-patterns.js';
 
 /** Minimal file shape the composer needs — matches the DB query's projection. */
 export interface ComposerFile {

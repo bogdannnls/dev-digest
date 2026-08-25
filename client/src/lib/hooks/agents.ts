@@ -62,14 +62,23 @@ export interface UpdateAgentInput {
       | "ci_fail_on"
       | "repo_intel"
       | "enabled"
+      | "attached_context_paths"
     >
   >;
+  /** Transient governing-repo selector (AC-12c). Not an `Agent` field — the
+   *  server's `UpdateAgentBody` requires it (`.refine`) whenever
+   *  `patch.attached_context_paths` is present, to validate those paths
+   *  against a fresh discovery set for the workspace's currently-active repo
+   *  selection. Sent as a sibling of `patch`, never persisted. Callers that
+   *  don't touch `attached_context_paths` can omit it. */
+  repoId?: string;
 }
 
 export function useUpdateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: UpdateAgentInput) => api.put<Agent>(`/agents/${id}`, patch),
+    mutationFn: ({ id, patch, repoId }: UpdateAgentInput) =>
+      api.put<Agent>(`/agents/${id}`, repoId !== undefined ? { ...patch, repo_id: repoId } : patch),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agents"] });
       qc.setQueryData(["agent", data.id], data);

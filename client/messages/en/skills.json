@@ -72,6 +72,32 @@
     "unsavedBody": "You have unsaved edits. Leave the page anyway?",
     "unsavedTitle": "Discard changes?"
   },
+  "context": {
+    "title": "Project context to use",
+    "hint": "Attached documents ground every agent that enables this skill, in the order shown.",
+    "addDoc": "Add document",
+    "reorderAria": "Reorder document",
+    "previewAria": "Preview {path}",
+    "removeAria": "Remove {path}",
+    "emptyTitle": "No documents attached",
+    "emptyBody": "Attach specs, docs, or insights markdown from the active repo so this skill's grounding travels with it wherever it's enabled.",
+    "noRepoTitle": "No active repo selected",
+    "noRepoBody": "Select a repo to browse and attach its discovered documents.",
+    "createHint": "Save this skill first to attach project context documents.",
+    "kind": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights",
+      "doc": "doc"
+    },
+    "picker": {
+      "title": "Attach a document",
+      "subtitle": "Documents discovered in the active repo's specs/docs/insights folders.",
+      "searchPlaceholder": "Search documents…",
+      "noResults": "All discovered documents are already attached.",
+      "closeAria": "Close picker"
+    }
+  },
   "import": {
     "title": "Import a skill",
     "subtitle": "Upload a Markdown file from another workspace or a teammate.",

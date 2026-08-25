@@ -41,6 +41,7 @@ const v1: AgentVersion = {
     ci_fail_on: "critical",
     repo_intel: false,
     skills: ["s-a", "s-deleted"],
+    attached_context_paths: [],
   },
 };
 
@@ -57,6 +58,7 @@ const v2: AgentVersion = {
     ci_fail_on: "critical",
     repo_intel: true,
     skills: ["s-a", "s-b"],
+    attached_context_paths: [],
   },
 };
 
@@ -105,7 +107,7 @@ describe("VersionsTab", () => {
     // current badge appears once, on the v2 row
     const currentBadges = screen.getAllByText("current");
     expect(currentBadges).toHaveLength(1);
-    expect(headers[0]).toContainElement(currentBadges[0]);
+    expect(headers[0]).toContainElement(currentBadges[0]!);
   });
 
   it("expands a row to show config fields and the snapshot prompt", async () => {

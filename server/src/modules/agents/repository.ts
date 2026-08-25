@@ -27,6 +27,7 @@ export interface InsertAgent {
   repoIntel?: boolean;
   enabled?: boolean;
   createdBy?: string | null;
+  attachedContextPaths?: string[];
 }
 
 export interface UpdateAgent {
@@ -40,6 +41,7 @@ export interface UpdateAgent {
   ciFailOn?: CiFailOn;
   repoIntel?: boolean;
   enabled?: boolean;
+  attachedContextPaths?: string[];
 }
 
 /** A skill linked to an agent (with its order + per-link enabled), joined from agent_skills. */
@@ -100,6 +102,9 @@ export class AgentsRepository {
         enabled: values.enabled ?? true,
         version: INITIAL_AGENT_VERSION,
         createdBy: values.createdBy ?? null,
+        ...(values.attachedContextPaths !== undefined
+          ? { attachedContextPaths: values.attachedContextPaths }
+          : {}),
       })
       .returning();
     await this.snapshotVersion(row!, INITIAL_AGENT_VERSION);
@@ -137,6 +142,9 @@ export class AgentsRepository {
         ...(patch.ciFailOn !== undefined ? { ciFailOn: patch.ciFailOn } : {}),
         ...(patch.repoIntel !== undefined ? { repoIntel: patch.repoIntel } : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.attachedContextPaths !== undefined
+          ? { attachedContextPaths: patch.attachedContextPaths }
+          : {}),
         ...(configChanged ? { version: nextVersion } : {}),
       })
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
@@ -162,6 +170,11 @@ export class AgentsRepository {
           ci_fail_on: row.ciFailOn,
           repo_intel: row.repoIntel,
           skills,
+          // AC-16: snapshot the attached-document list exactly as it existed at
+          // save time. Always an array in the frozen snapshot — a null/absent
+          // column value is normalized to [], matching `isConfigChange`'s
+          // treatment of "no list" (see helpers.ts `pathsChanged`).
+          attached_context_paths: row.attachedContextPaths ?? [],
         },
       })
       .onConflictDoNothing();

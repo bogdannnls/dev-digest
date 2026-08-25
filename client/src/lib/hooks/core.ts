@@ -16,7 +16,6 @@ import type {
   PrMeta,
   PrDetail,
   SpecFile,
-  IndexStatus,
 } from "../types";
 
 // ---- Settings (F1: GET/PUT /settings, POST /settings/test-connection) ----
@@ -132,10 +131,22 @@ export function useContextFiles(repoId: string | null | undefined) {
   });
 }
 
+/** Single document's content, for preview (`GET /repos/:repoId/context/file?path=`). */
+export function useContextFile(repoId: string | null | undefined, path: string | null | undefined) {
+  return useQuery({
+    queryKey: ["context-file", repoId, path],
+    queryFn: () =>
+      api.get<SpecFile>(`/repos/${repoId}/context/file?path=${encodeURIComponent(path as string)}`),
+    enabled: !!repoId && !!path,
+  });
+}
+
 export function useReindexContext() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (repoId: string) => api.post<IndexStatus>(`/repos/${repoId}/context/reindex`),
+    // T1's reindex endpoint re-runs discovery and returns the refreshed list —
+    // not an IndexStatus (no persisted index in this feature).
+    mutationFn: (repoId: string) => api.post<SpecFile[]>(`/repos/${repoId}/context/reindex`),
     onSuccess: (_d, repoId) => qc.invalidateQueries({ queryKey: ["context", repoId] }),
   });
 }

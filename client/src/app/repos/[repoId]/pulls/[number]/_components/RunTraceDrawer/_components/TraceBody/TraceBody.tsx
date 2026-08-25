@@ -3,6 +3,7 @@
 "use client";
 
 import React from "react";
+import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
@@ -14,6 +15,26 @@ import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
 import { Row, Stat } from "../atoms";
+
+// ---- Specs-read panel (co-located; only consumer is TraceBody) ----
+const SPEC_ROW_STYLE: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "6px 0",
+};
+
+const SPEC_PATH_STYLE: CSSProperties = {
+  fontSize: 13,
+  color: "var(--text-secondary)",
+  wordBreak: "break-all",
+};
+
+/** Format a per-document token estimate for the "Specs read" badge, e.g. 420 -> "420 tok", 1080 -> "1.1k tok". */
+function formatSpecTokens(count: number): string {
+  return count >= 1000 ? `${(count / 1000).toFixed(1)}k tok` : `${count} tok`;
+}
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
@@ -34,19 +55,6 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Row>
           <Row label={t("trace.config.memoryPulled")}>
             <span>{t("trace.config.items", { count: trace.memory_pulled.length })}</span>
-          </Row>
-          <Row label={t("trace.config.specsRead")}>
-            <div style={s.specsWrap}>
-              {trace.specs_read.length === 0 ? (
-                <span style={s.specsNone}>{t("trace.config.none")}</span>
-              ) : (
-                trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
-                    {sp}
-                  </span>
-                ))
-              )}
-            </div>
           </Row>
         </div>
       </TraceSection>
@@ -87,6 +95,32 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <PromptBlock label={t("trace.prompt.callers")} text={trace.prompt_assembly.callers} color={PROMPT_COLORS.callers} />
         )}
         <PromptBlock label={t("trace.prompt.user")} text={trace.prompt_assembly.user} color={PROMPT_COLORS.user} />
+      </TraceSection>
+
+      <TraceSection
+        icon="FileText"
+        title={t("trace.specsRead")}
+        right={<Badge color="var(--text-muted)">{trace.specs_read.length}</Badge>}
+      >
+        {trace.specs_read.length === 0 ? (
+          <span style={s.specsNone}>{t("trace.noSpecsRead")}</span>
+        ) : (
+          trace.specs_read.map((path, i) => {
+            const tokens = trace.specs_tokens?.[i];
+            return (
+              <div key={path} style={SPEC_ROW_STYLE}>
+                <span className="mono" style={SPEC_PATH_STYLE}>
+                  {path}
+                </span>
+                {tokens != null && (
+                  <Badge color="var(--text-muted)" mono>
+                    {formatSpecTokens(tokens)}
+                  </Badge>
+                )}
+              </div>
+            );
+          })
+        )}
       </TraceSection>
 
       <TraceSection

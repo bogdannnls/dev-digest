@@ -43,6 +43,6 @@ Integration only: `pnpm exec vitest run .it.test` (needs Docker)
 ## More
 - [README.md](README.md)
 - [docs/](docs/) — deep dives (deeper than CLAUDE.md should go)
-- [specs/](specs/) — feature/RFC specs
+- [specs/](specs/) — feature/RFC specs; SDD requirement specs authored by `spec-creator`
 - [INSIGHTS.md](INSIGHTS.md) — server-specific learnings
 - Root: [../CLAUDE.md](../CLAUDE.md), [../TESTING.md](../TESTING.md)

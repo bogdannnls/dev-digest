@@ -129,6 +129,9 @@ export const Skill = z.object({
   enabled: z.boolean(),
   version: z.number().int(),
   evidence_files: z.array(z.string()).nullish(),
+  // Ordered repo-relative markdown paths manually attached to this skill (L05).
+  // Order = array index, membership = presence — no separate field for either.
+  attached_context_paths: z.array(z.string()).nullish(),
 });
 export type Skill = z.infer<typeof Skill>;
 
@@ -199,6 +202,9 @@ export const Agent = z.object({
   // Inject repo-intel context (repo skeleton + callers + rank note) into this
   // agent's review prompt. Default on; gated again by the global flag.
   repo_intel: z.boolean().default(true),
+  // Ordered repo-relative markdown paths manually attached to this agent (L05).
+  // Order = array index, membership = presence — no separate field for either.
+  attached_context_paths: z.array(z.string()).nullish(),
 });
 export type Agent = z.infer<typeof Agent>;
 
@@ -224,6 +230,10 @@ export const AgentVersionConfig = z.object({
   ci_fail_on: CiFailOn,
   repo_intel: z.boolean(),
   skills: z.array(z.string()),
+  // Frozen at version-bump time (AC-16) — the agent's own attached-document
+  // list exactly as it existed at save time. `.default([])` so legacy version
+  // snapshots written before this field existed parse to [] instead of throwing.
+  attached_context_paths: z.array(z.string()).default([]),
 });
 export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
 

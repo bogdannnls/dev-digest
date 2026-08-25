@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 /**
  * PR Brief building blocks: Intent, Blast radius, Risks, PR History,
- * Smart Diff. Composed into PrBrief.
+ * Smart Diff. Each is a standalone contract consumed independently by its
+ * own feature — no single composed type unifies them.
  */
 
 // ---- Intent ----
@@ -111,15 +112,6 @@ export const SmartDiff = z.object({
   }),
 });
 export type SmartDiff = z.infer<typeof SmartDiff>;
-
-// ---- Composed PR Brief (pr_brief.json) ----
-export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
-  risks: Risks,
-  history: PrHistory,
-});
-export type PrBrief = z.infer<typeof PrBrief>;
 
 // ---- Intent Layer (pr_intent overview card, see docs/superpowers/specs/2026-07-04-intent-layer-design.md §7) ----
 // NOTE: do NOT mutate the `Intent` schema above — it is already shipped to the reviewer pipeline.

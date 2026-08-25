@@ -26,8 +26,10 @@ import { ConfigError } from './errors.js';
 import { BitbucketClient } from '../adapters/bitbucket/rest.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { RepoRepository } from '../modules/repos/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { ContextService } from '../modules/context/service.js';
 import { SkillsService } from '../modules/skills/service.js';
 import { AgentsService } from '../modules/agents/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
@@ -54,6 +56,8 @@ export interface ContainerOverrides {
   llm?: Partial<Record<'openai' | 'anthropic' | 'openrouter', LLMProvider>>;
   /** repo-intel facade (T1.1+) — tests inject mock RepoIntel implementations. */
   repoIntel?: RepoIntel;
+  /** Project Context reader (L05 T1) — tests inject a stub ContextService. */
+  context?: ContextService;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
@@ -86,7 +90,9 @@ export class Container {
   // `container.agentsRepo` instead of reaching into another module's folder.
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _repoRepo?: RepoRepository;
   private _repoIntel?: RepoIntel;
+  private _context?: ContextService;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
@@ -116,6 +122,10 @@ export class Container {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
   }
 
+  get repoRepo(): RepoRepository {
+    return (this._repoRepo ??= new RepoRepository(this.db));
+  }
+
   get codeIndex(): CodeIndex {
     if (this.overrides.codeIndex) return this.overrides.codeIndex;
     this._codeIndex ??= new RipgrepCodeIndex(this.git);
@@ -131,6 +141,18 @@ export class Container {
     if (this.overrides.repoIntel) return this.overrides.repoIntel;
     this._repoIntel ??= new RepoIntelService(this);
     return this._repoIntel;
+  }
+
+  /**
+   * Project Context reader (L05 T1) — discovers repo markdown under the
+   * configured discovery roots (`config.contextRoots`) and exposes
+   * `listPaths()`, the shared whitelist primitive later attach/pre-flight
+   * work (T2/T3/T4) reuses. Tests inject a stub via `ContainerOverrides.context`.
+   */
+  get context(): ContextService {
+    if (this.overrides.context) return this.overrides.context;
+    this._context ??= new ContextService(this);
+    return this._context;
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

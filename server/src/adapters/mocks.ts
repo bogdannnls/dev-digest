@@ -296,6 +296,15 @@ export class MockGitClient implements GitClient {
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
   }
+  async cloneExists(): Promise<boolean> {
+    return false;
+  }
+  async statFile(): Promise<{ size: number; mtime: Date } | null> {
+    return null;
+  }
+  async walkFiles(): Promise<string[]> {
+    return [];
+  }
 }
 
 // ---------- Mock CodeIndex ----------

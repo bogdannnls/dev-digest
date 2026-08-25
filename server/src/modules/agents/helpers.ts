@@ -23,6 +23,7 @@ export function toAgentDto(row: AgentRow): Agent {
     strategy: row.strategy as ReviewStrategy,
     ci_fail_on: row.ciFailOn as CiFailOn,
     repo_intel: row.repoIntel,
+    attached_context_paths: row.attachedContextPaths,
   };
 }
 
@@ -52,6 +53,20 @@ export interface ConfigChangePatch {
   strategy?: ReviewStrategy;
   ciFailOn?: CiFailOn;
   repoIntel?: boolean;
+  attachedContextPaths?: string[];
+}
+
+/**
+ * Order-sensitive array equality (AC-11: order = array index). A null/absent
+ * existing list is treated as `[]` (AC-14: null, absent, and empty are
+ * identical), so patching from "no list" to `[]` is NOT a change, but patching
+ * to a non-empty list — or reordering an existing one — is.
+ */
+function pathsChanged(existing: string[] | null | undefined, patch: string[] | undefined): boolean {
+  if (patch === undefined) return false;
+  const existingArr = existing ?? [];
+  if (existingArr.length !== patch.length) return true;
+  return existingArr.some((p, i) => p !== patch[i]);
 }
 
 /**
@@ -69,6 +84,7 @@ export function isConfigChange(
     | 'strategy'
     | 'ciFailOn'
     | 'repoIntel'
+    | 'attachedContextPaths'
   >,
   patch: ConfigChangePatch,
 ): boolean {
@@ -81,6 +97,23 @@ export function isConfigChange(
     (patch.strategy !== undefined && patch.strategy !== existing.strategy) ||
     (patch.ciFailOn !== undefined && patch.ciFailOn !== existing.ciFailOn) ||
     (patch.repoIntel !== undefined && patch.repoIntel !== existing.repoIntel) ||
-    patch.outputSchema !== undefined
+    patch.outputSchema !== undefined ||
+    pathsChanged(existing.attachedContextPaths, patch.attachedContextPaths)
   );
+}
+
+/**
+ * AC-13: dedupe a submitted attached-document path list, keeping only each
+ * path's first occurrence and preserving the order of first appearance.
+ */
+export function dedupeFirstOccurrence(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of paths) {
+    if (!seen.has(p)) {
+      seen.add(p);
+      out.push(p);
+    }
+  }
+  return out;
 }

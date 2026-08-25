@@ -36,6 +36,11 @@ const EnvSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   ),
+  // Project Context (L05): comma-separated root folder NAMES eligible for
+  // markdown discovery (`modules/context`), e.g. "specs,docs,insights". Not a
+  // path — a bare directory-name segment matched at any depth in a repo's
+  // clone. Defaults to specs/docs/insights when unset (AC-8).
+  CONTEXT_ROOTS: z.string().optional(),
 });
 
 export type AppConfig = {
@@ -59,6 +64,14 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /**
+   * Root folder NAMES eligible for Project Context markdown discovery
+   * (`modules/context`) — a bare directory-name segment matched at any depth
+   * in a repo's clone (e.g. `specs/foo/bar.md` matches root `specs`). NOT
+   * hardcoded per call site (AC-8); override via `CONTEXT_ROOTS`
+   * (comma-separated). Default: `['specs', 'docs', 'insights']`.
+   */
+  contextRoots: string[];
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +90,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    contextRoots: parsed.CONTEXT_ROOTS
+      ? parsed.CONTEXT_ROOTS.split(',').map((s) => s.trim()).filter(Boolean)
+      : ['specs', 'docs', 'insights'],
   };
 }

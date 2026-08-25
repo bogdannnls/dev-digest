@@ -46,6 +46,7 @@
     "tabs": {
       "config": "Config",
       "skills": "Skills",
+      "context": "Context",
       "versions": "Versions",
       "evals": "Evals",
       "stats": "Stats",
@@ -105,6 +106,24 @@
       "searchPlaceholder": "Search skills…",
       "noUnlinked": "All workspace skills are already linked.",
       "createSkill": "Create a new skill"
+    }
+  },
+  "context": {
+    "title": "Project context",
+    "addDocument": "Add document",
+    "orderHint": "Order matters — earlier documents appear earlier in the injected context. Drag to reorder.",
+    "emptyTitle": "No documents attached yet",
+    "emptyBody": "Attach specs, docs, or insights discovered in this repo to ground this agent's reviews in your team's documentation.",
+    "inheritedLabel": "Inherited from enabled skills (read-only)",
+    "inheritedBadge": "Inherited",
+    "reorderAria": "Reorder document",
+    "previewAria": "Preview {path}",
+    "removeAria": "Remove {path}",
+    "picker": {
+      "title": "Add a document",
+      "subtitle": "Documents discovered in the active repo's specs/docs/insights folders.",
+      "searchPlaceholder": "Search documents…",
+      "noUnattached": "All discovered documents are already attached."
     }
   },
   "mount": {

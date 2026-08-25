@@ -8,8 +8,10 @@ import type { Skill, SkillType } from "@devdigest/shared";
 import { AppShell } from "../../../../components/app-shell";
 import { useCreateSkill, useSkill, useUpdateSkill } from "../../../../lib/hooks/skills";
 import { useToast } from "../../../../lib/toast";
+import { useActiveRepo } from "../../../../lib/repo-context";
 import { TYPE_OPTIONS } from "../SkillsListView/constants";
 import { MarkdownSplit } from "./_components/MarkdownSplit";
+import { ContextSection } from "./_components/ContextSection";
 import { suggestSkillType } from "../../../../lib/skill-type-suggest";
 import { s } from "./styles";
 
@@ -23,12 +25,14 @@ export function SkillEditor(props: Mode) {
   const { data: skill, isLoading, isError, refetch } = useSkill(isEdit ? props.skillId : null);
   const create = useCreateSkill();
   const update = useUpdateSkill();
+  const { repoId } = useActiveRepo();
 
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [type, setType] = React.useState<SkillType>("custom");
   const [enabled, setEnabled] = React.useState(true);
   const [body, setBody] = React.useState("");
+  const [attachedContextPaths, setAttachedContextPaths] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     if (!skill) return;
@@ -37,6 +41,7 @@ export function SkillEditor(props: Mode) {
     setType(skill.type);
     setEnabled(skill.enabled);
     setBody(skill.body);
+    setAttachedContextPaths(skill.attached_context_paths ?? []);
   }, [skill?.id]);
 
   const crumb = [
@@ -79,8 +84,19 @@ export function SkillEditor(props: Mode) {
 
   const onSave = () => {
     if (isEdit) {
+      // `attached_context_paths` is only included when an active repo is
+      // selected: the server requires `repo_id` alongside it (T3 `.refine()`)
+      // to validate the submitted paths (AC-12c), and without a resolvable
+      // repo there is nothing to validate against — omit both rather than
+      // risk a 422 that would also block saving unrelated field edits.
+      const patch: Partial<
+        Pick<Skill, "name" | "description" | "type" | "body" | "enabled" | "attached_context_paths">
+      > = { name, description, type, body, enabled };
+      if (repoId) {
+        patch.attached_context_paths = attachedContextPaths;
+      }
       update.mutate(
-        { id: props.skillId, patch: { name, description, type, body, enabled } },
+        { id: props.skillId, patch, repo_id: repoId ?? undefined },
         {
           onSuccess: (data) => toast.success(t("editor.savedToast", { version: data.version })),
           onError: () => toast.error(t("editor.saveError")),
@@ -158,6 +174,18 @@ export function SkillEditor(props: Mode) {
         </FormField>
         <FormField label={t("editor.body")}>
           <MarkdownSplit value={body} onChange={setBody} ariaLabel={t("editor.body")} placeholder={t("editor.bodyPlaceholder")} />
+        </FormField>
+
+        <FormField label={t("context.title")}>
+          {isEdit ? (
+            <ContextSection
+              repoId={repoId}
+              paths={attachedContextPaths}
+              onChange={setAttachedContextPaths}
+            />
+          ) : (
+            <p style={s.subtitle}>{t("context.createHint")}</p>
+          )}
         </FormField>
 
         <div style={s.actions}>

@@ -33,6 +33,11 @@ export const agents = pgTable('agents', {
   version: integer('version').notNull().default(1),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: now(),
+  // Ordered list of repo-relative markdown paths (specs/docs/insights) manually
+  // attached to this agent (L05). Order = array index, membership = presence —
+  // no separate ordering/membership field. Nullable, no default — mirrors
+  // `skills.evidenceFiles`. Read live from disk at run time, not a citation trail.
+  attachedContextPaths: jsonb('attached_context_paths').$type<string[]>(),
 });
 
 export const agentVersions = pgTable(

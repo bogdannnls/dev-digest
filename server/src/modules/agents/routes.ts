@@ -45,18 +45,29 @@ const CreateAgentBody = z.object({
   enabled: z.boolean().optional(),
 });
 
-const UpdateAgentBody = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  provider: Provider.optional(),
-  model: z.string().min(1).optional(),
-  system_prompt: z.string().min(1).optional(),
-  output_schema: z.unknown().optional(),
-  strategy: ReviewStrategy.optional(),
-  ci_fail_on: CiFailOn.optional(),
-  repo_intel: z.boolean().optional(),
-  enabled: z.boolean().optional(),
-});
+const UpdateAgentBody = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    provider: Provider.optional(),
+    model: z.string().min(1).optional(),
+    system_prompt: z.string().min(1).optional(),
+    output_schema: z.unknown().optional(),
+    strategy: ReviewStrategy.optional(),
+    ci_fail_on: CiFailOn.optional(),
+    repo_intel: z.boolean().optional(),
+    enabled: z.boolean().optional(),
+    attached_context_paths: z.array(z.string()).optional(),
+    // Transient — never persisted, not part of `Agent`/`UpdateAgentInput`/the
+    // DB. Resolves AC-12/AC-12c's "governing repo": the workspace's
+    // currently-active repo selection at save time, used ONLY to validate
+    // `attached_context_paths` against a freshly-computed discovery set.
+    repo_id: z.string().uuid().optional(),
+  })
+  .refine((b) => b.attached_context_paths === undefined || b.repo_id !== undefined, {
+    message: 'repo_id is required when attached_context_paths is present',
+    path: ['repo_id'],
+  });
 
 /** Either set the whole ordered set (`skill_ids`) or link one (`skill_id`). */
 const SetSkillsBody = z
@@ -133,7 +144,10 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, body: UpdateAgentBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const agent = await service.update(workspaceId, req.params.id, req.body);
+      // `repo_id` is transient (AC-12c's governing-repo selector) — never
+      // forwarded as part of the persisted patch.
+      const { repo_id, ...patch } = req.body;
+      const agent = await service.update(workspaceId, req.params.id, patch, repo_id);
       if (!agent) throw new NotFoundError('Agent not found');
       return agent;
     },

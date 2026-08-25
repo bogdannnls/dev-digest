@@ -46,5 +46,5 @@ Before marking work ready, if the diff touches `client/` or `server/`, run `/pr-
 ## Where to look
 - Test philosophy + suite map: [TESTING.md](TESTING.md)
 - Deep dives: [docs/](docs/)
-- Cross-package RFCs / specs: [specs/](specs/)
+- Cross-package RFCs / specs: [specs/](specs/) — cross-cutting SDD requirement specs (2+ modules), authored by `spec-creator`
 - Cross-cutting learnings: [INSIGHTS.md](INSIGHTS.md)

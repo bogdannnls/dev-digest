@@ -18,6 +18,11 @@ export const skills = pgTable('skills', {
   version: integer('version').notNull().default(1),
   evidenceFiles: jsonb('evidence_files').$type<string[]>(),
   createdAt: now(),
+  // Ordered list of repo-relative markdown paths (specs/docs/insights) manually
+  // attached to this skill (L05). Order = array index, membership = presence —
+  // no separate ordering/membership field. Nullable, no default — mirrors
+  // `evidenceFiles` above. Read live from disk at run time, not a citation trail.
+  attachedContextPaths: jsonb('attached_context_paths').$type<string[]>(),
 });
 
 export const skillVersions = pgTable(

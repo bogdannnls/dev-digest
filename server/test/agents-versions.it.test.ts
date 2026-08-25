@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat, access, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, sep } from 'node:path';
+import type {
+  GitClient,
+  RepoRef,
+  CloneOptions,
+  UnifiedDiff,
+  BlameLine,
+  GitCommit,
+} from '@devdigest/shared';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
@@ -9,6 +21,86 @@ import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
 import type { Container } from '../src/platform/container.js';
+
+/** Directories `walkFiles` never descends into — mirrors `SimpleGitClient`'s ignore set. */
+const WALK_IGNORE_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.next', 'coverage']);
+
+/** Symlink-safe recursive walk (Dirent own-type, never follows symlinks); returns clone-relative posix paths. */
+async function walkInto(root: string, dir: string, acc: string[]): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (WALK_IGNORE_DIRS.has(entry.name)) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkInto(root, full, acc);
+    } else if (entry.isFile()) {
+      acc.push(relative(root, full).split(sep).join('/'));
+    }
+  }
+}
+
+/**
+ * GitClient-shaped test double over a REAL directory on disk — needed only by
+ * the L05 T2 `attached_context_paths` version-bump cases below, which go
+ * through save-time path validation (`container.context.listPaths`). Mirrors
+ * `context-reader.it.test.ts`'s `RealDirGitClient` (incl. the L05-refactor
+ * `cloneExists`/`statFile`/`walkFiles` methods the GitClient port now requires).
+ */
+class RealDirGitClient implements GitClient {
+  constructor(protected root: string) {}
+  clonePathFor(_repo: RepoRef): string {
+    return this.root;
+  }
+  async clone(_repo: RepoRef, _url: string, _opts?: CloneOptions): Promise<{ path: string }> {
+    return { path: this.root };
+  }
+  async fetchPullHead(): Promise<void> {}
+  async sync(): Promise<{ head: string }> {
+    return { head: 'HEAD' };
+  }
+  async currentHead(): Promise<string> {
+    return 'HEAD';
+  }
+  async diff(): Promise<UnifiedDiff> {
+    return { raw: '', files: [] };
+  }
+  async diffNameOnly(): Promise<string[]> {
+    return [];
+  }
+  async blame(): Promise<BlameLine[]> {
+    return [];
+  }
+  async log(): Promise<GitCommit[]> {
+    return [];
+  }
+  async readFile(_repo: RepoRef, path: string): Promise<string> {
+    return readFile(join(this.root, path), 'utf8');
+  }
+  async cloneExists(): Promise<boolean> {
+    return access(this.root, constants.F_OK).then(
+      () => true,
+      () => false,
+    );
+  }
+  async statFile(_repo: RepoRef, relPath: string): Promise<{ size: number; mtime: Date } | null> {
+    try {
+      const st = await stat(join(this.root, relPath));
+      return { size: st.size, mtime: st.mtime };
+    } catch {
+      return null;
+    }
+  }
+  async walkFiles(): Promise<string[]> {
+    const acc: string[] = [];
+    await walkInto(this.root, this.root, acc);
+    return acc;
+  }
+}
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -26,13 +118,18 @@ if (!hasDocker) {
  */
 d('GET /agents/:id/versions', () => {
   let pg: PgFixture;
+  let workspaceId: string;
+  const tempDirs: string[] = [];
 
   beforeAll(async () => {
     pg = await startPg();
     await seed(pg.handle.db);
+    const [ws] = await pg.handle.db.select().from(t.workspaces);
+    workspaceId = ws!.id;
   });
   afterAll(async () => {
     await pg?.stop();
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
   function makeApp() {
@@ -42,6 +139,32 @@ d('GET /agents/:id/versions', () => {
       db: pg.handle.db,
       overrides: { git: new MockGitClient(), forge: { github: new MockGitHubClient() } },
     });
+  }
+
+  /** Real clone-backed app, for the `attached_context_paths` version-bump cases
+   *  below — save-time validation needs a real discovery set to check against. */
+  function makeAppWithRealDir(root: string) {
+    const env = {
+      ...process.env,
+      NODE_ENV: 'test',
+      DEVDIGEST_CLONE_DIR: tmpdir(),
+    } as NodeJS.ProcessEnv;
+    const config = loadConfig(env);
+    return buildApp({ config, db: pg.handle.db, overrides: { git: new RealDirGitClient(root) } });
+  }
+
+  async function tempDir(prefix: string): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  async function insertRepo(name: string): Promise<string> {
+    const [row] = await pg.handle.db
+      .insert(t.repos)
+      .values({ workspaceId, owner: 'acme', name, fullName: `acme/${name}` })
+      .returning();
+    return row!.id;
   }
 
   const createBody = {
@@ -174,5 +297,62 @@ d('GET /agents/:id/versions', () => {
     expect(await service.listVersions(otherWs!.id, foreign.id)).toHaveLength(1);
     expect(await service.listVersions(defaultWs!, foreign.id)).toBeUndefined();
     expect(await service.getVersion(defaultWs!, foreign.id, 1)).toBeUndefined();
+  });
+
+  it('changing attached_context_paths bumps the agent version (AC-15)', async () => {
+    const root = await tempDir('actx-ver-bump-');
+    await mkdir(join(root, 'specs'), { recursive: true });
+    await writeFile(join(root, 'specs', 'a.md'), '# a');
+
+    const app = await makeAppWithRealDir(root);
+    const repoId = await insertRepo('ver-bump-repo');
+    const agentId = (
+      await app.inject({ method: 'POST', url: '/agents', payload: createBody })
+    ).json().id as string;
+
+    const updated = await app.inject({
+      method: 'PUT',
+      url: `/agents/${agentId}`,
+      payload: { attached_context_paths: ['specs/a.md'], repo_id: repoId },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().version).toBe(2);
+
+    const versions = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}/versions` })
+    ).json();
+    expect(versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
+    await app.close();
+  });
+
+  it('version snapshot config includes attached_context_paths (AC-16)', async () => {
+    const root = await tempDir('actx-ver-snapshot-');
+    await mkdir(join(root, 'specs'), { recursive: true });
+    await writeFile(join(root, 'specs', 'a.md'), '# a');
+    await writeFile(join(root, 'specs', 'b.md'), '# b');
+
+    const app = await makeAppWithRealDir(root);
+    const repoId = await insertRepo('ver-snapshot-repo');
+    const agentId = (
+      await app.inject({ method: 'POST', url: '/agents', payload: createBody })
+    ).json().id as string;
+
+    // v1 snapshot (no attached paths yet) captures an empty array, not null/absent.
+    const v1 = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}/versions/1` })
+    ).json();
+    expect(v1.config.attached_context_paths).toEqual([]);
+
+    await app.inject({
+      method: 'PUT',
+      url: `/agents/${agentId}`,
+      payload: { attached_context_paths: ['specs/b.md', 'specs/a.md'], repo_id: repoId },
+    });
+
+    const v2 = (
+      await app.inject({ method: 'GET', url: `/agents/${agentId}/versions/2` })
+    ).json();
+    expect(v2.config.attached_context_paths).toEqual(['specs/b.md', 'specs/a.md']);
+    await app.close();
   });
 });
