@@ -771,7 +771,7 @@ open:
 | `GET /agents/:id/eval-runs/compare` | side-by-side of two runs | AC-54..AC-58, 200 `EvalRunComparison` |
 | `GET /agents/:id/eval-runs/:batchId` | one run with its prompt and per-case rows | AC-26, 200 `EvalBatchDetail` |
 | `GET /agents/:id/eval-cases` | the set | AC-20, 200 `EvalCase[]` |
-| `POST /agents/:id/eval-cases/from-finding` | one-click case creation | AC-5..AC-15, 201 (or 200 when idempotent) |
+| `POST /eval-cases/from-finding` | one-click case creation | AC-5..AC-15, 201 (or 200 when idempotent) |
 | `POST /agents/:id/eval-cases` | Case Editor create | AC-16..AC-18, 201 |
 | `PUT /agents/:id/eval-cases/:caseId` | Case Editor update | AC-21, 200 |
 | `DELETE /agents/:id/eval-cases/:caseId` | remove a case | AC-22, 204 |
@@ -1032,6 +1032,16 @@ which belongs to none of the three modules named in this spec's header. They are
 externally fixed) header declares. See Open questions Q3.
 
 ## Open questions
+
+- **Q7. The `from-finding` route lost its agent segment — RESOLVED during implementation,
+  contract v1.4.** This spec was authored against `POST /agents/:id/eval-cases/from-finding`.
+  The implementer reported that the `:id` segment had become decorative — the server derives
+  the owning agent from `finding -> review.agent_id` — and the client cannot supply a correct
+  value for it: `FindingRecord` carries only `review_id`, and `FindingsPanel` renders findings
+  belonging to the reviews of several different agents, so any single `agentId` threaded into
+  it would be wrong for some rows. The lead re-opened the boundary and both sides were
+  re-dispatched against the new path, `POST /eval-cases/from-finding`. AC-5..AC-15 are
+  unchanged in substance; only the path in `## Interfaces & flows` moved.
 
 - **Q1. `EvalDashboard.current` nullability — RESOLVED by the lead, contract v1.3.**
   The shipped `EvalDashboard.current` typed `recall`, `precision` and `citation_accuracy`

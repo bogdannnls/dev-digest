@@ -148,7 +148,11 @@ export const api = {
   async runEvalBatch(agentId: string, caseIds?: string[]): Promise<EvalBatchDetail> {
     const data = await apiFetch<unknown>(`/agents/${agentId}/eval-runs`, {
       method: 'POST',
-      body: caseIds !== undefined ? JSON.stringify({ case_ids: caseIds }) : undefined,
+      // Always send an envelope, even for "run everything". `apiFetch` omits
+      // content-type when body is undefined, which leaves `request.body` null
+      // and fails the route's object schema — a 422 on the feature's primary
+      // action that neither typecheck nor a payload-materialising test can see.
+      body: JSON.stringify(caseIds !== undefined ? { case_ids: caseIds } : {}),
     });
     return EvalBatchDetail.parse(data);
   },

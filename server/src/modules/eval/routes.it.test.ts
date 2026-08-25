@@ -559,6 +559,34 @@ d('eval routes (contract §4)', () => {
       expect(after).toHaveLength(0);
     });
 
+    it('accepts a POST with NO body at all as "run every case" — the shape the client actually sends', async () => {
+      // Regression guard. The client omits the body entirely for run-all, and
+      // `apiFetch` then omits content-type too, so Fastify hands the route a
+      // null body. Every other test here materialises `payload: {}`, which
+      // passes the object schema and hides the real wire shape — this one must
+      // send nothing at all, or it is not testing the failing case.
+      const { db } = pg.handle;
+      const agent = await makeAgent(db, workspaceId);
+      await insertCase(db, workspaceId, agent.id, {
+        name: 'case-nobody', diff: diffText('src/a.ts', 9), kind: 'must_find',
+        file: 'src/a.ts', startLine: 10, endLine: 10,
+      });
+
+      const llm = new ScriptedLLMProvider({ 'case-nobody': mockReview([]) });
+      const localApp = await buildApp({
+        db,
+        overrides: { llm: { openai: llm }, secrets: new MockSecretsProvider() },
+      });
+      const res = await localApp.inject({
+        method: 'POST',
+        url: `/agents/${agent.id}/eval-runs`,
+      });
+      await localApp.close();
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json().batch.cases_total).toBe(1);
+    });
+
     it('snapshots system_prompt verbatim per batch; a batch run after a prompt edit carries the NEW prompt while the older batch keeps the OLD one', async () => {
       const { db } = pg.handle;
       const agent = await makeAgent(db, workspaceId, { systemPrompt: 'PROMPT_V1 — review carefully.' });

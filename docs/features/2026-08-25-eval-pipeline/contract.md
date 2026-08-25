@@ -1,6 +1,6 @@
 # Frozen interface contract — Eval Pipeline (L06)
 
-Version: **v1.3**
+Version: **v1.4**
 Frozen: 2026-08-25 (v1.1 corrects section 5.5 only - the missing-i18n-key list was
 incomplete. Corrected before any task was dispatched against that section.)
 Owner: lead (`team-integrate`). No implementer edits this file. A role that believes a
@@ -117,9 +117,16 @@ feature writes sets it.
 ## §2 Shared contracts — `contracts/eval-ci.ts`
 
 All additions go in `server/src/vendor/shared/contracts/eval-ci.ts` and must be
-**mirrored byte-for-byte** into `client/src/vendor/shared/contracts/eval-ci.ts`. The two
-vendor trees are separate copies aliased to the same `@devdigest/shared` specifier; a
-change to one without the other is a defect.
+**mirrored** into `client/src/vendor/shared/contracts/eval-ci.ts`. The two vendor trees
+are separate copies aliased to the same `@devdigest/shared` specifier; adding a schema to
+one and not the other is a defect.
+
+Note (v1.3): the two copies are **already not identical** — 275 lines server-side against
+246 client-side, a pre-existing divergence in parts of the file this feature does not
+touch. Do not attempt to reconcile it. Add the same new schemas, with the same names and
+the same field shapes, to both files; leave every pre-existing difference exactly as it
+is. Reconciling unrelated drift would bury this feature's diff in noise and risks
+changing a contract nothing here asked to change.
 
 ### §2.1 `EvalExpectation` — new
 
@@ -423,10 +430,21 @@ Errors: unknown agent -> 404. Agent has zero cases -> 422 `ValidationError`
 | method | path | body | 2xx |
 |---|---|---|---|
 | GET | `/agents/:id/eval-cases` | - | 200 `EvalCase[]` (`expected_output` typed as `EvalExpectation`) |
-| POST | `/agents/:id/eval-cases/from-finding` | `{ finding_id: string }` | 201 `EvalCase` |
+| POST | `/eval-cases/from-finding` | `{ finding_id: string }` | 201 `EvalCase` (200 when it already existed) |
 | POST | `/agents/:id/eval-cases` | `EvalCaseManualInput` | 201 `EvalCase` |
 | PUT | `/agents/:id/eval-cases/:caseId` | `EvalCaseManualInput` | 200 `EvalCase` |
 | DELETE | `/agents/:id/eval-cases/:caseId` | - | 204 |
+
+**v1.4 — boundary re-opened: `from-finding` is NOT agent-scoped.**
+v1.3 placed this route under `/agents/:id/`, which contradicted §5.6's "the client passes
+only `finding_id`; the server resolves the owner". Both could not hold, and the
+implementer correctly reported that `:id` had become decorative. Established during
+implementation: `FindingsPanel` has no agent id to send — `FindingRecord` carries only
+`review_id` — and the panel renders findings from the reviews of *several* agents, so a
+single `agentId` prop would be wrong for some of its rows regardless of how it were
+threaded. The owning agent is therefore derived server-side from
+`finding -> review.agent_id`, and the route drops the agent segment. Both sides of this
+boundary were re-dispatched against v1.4; neither was patched alone.
 
 ### §4.3 Dashboard
 

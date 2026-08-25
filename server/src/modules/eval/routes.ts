@@ -47,7 +47,14 @@ import { EvalService } from './service.js';
  * `/:batchId` route.
  */
 
-const RunBatchBody = z.object({ case_ids: z.array(z.string().uuid()).optional() });
+// A body-less POST means "run every case". Fastify leaves `request.body` null
+// when no content-type is sent, so the envelope must be optional here or the
+// run-all action fails validation before reaching the handler. Both `{}` and
+// no body at all normalise to the same thing.
+const RunBatchBody = z
+  .object({ case_ids: z.array(z.string().uuid()).optional() })
+  .nullish()
+  .transform((v) => v ?? {});
 
 const FromFindingBody = z.object({ finding_id: z.string().uuid() });
 
