@@ -120,3 +120,69 @@ Narrate why, not just what. One take, roughly this order:
    denominator and nothing enters its numerator.
 6. `pnpm verify:l06` in a terminal, and one sentence on why scoring needs no judge model:
    the expectation is a file and a line range, so a code-level overlap check settles it.
+
+---
+
+## Run log — 2026-08-25, executed end to end
+
+The sequence above was run against the local stack (Postgres 5433, API 4001, web 3000)
+with real `claude-sonnet-4-6` calls. Recorded here because the outcome contradicted the
+hypothesis, and that is the part worth keeping.
+
+### Dataset
+
+Subject agent: **Test Quality Reviewer** (`2a3de406`). Ten cases, built from real review
+decisions on its own findings:
+
+- **6 `must_find`** — findings naming a concrete, mechanical defect in the test itself:
+  wall-clock-dependent assertions, mutable state shared across cases, a spy-count
+  assertion pinned to one of three calls, dead fake-timer scaffolding.
+- **4 `must_not_flag`** — findings that only observe a coverage gap ("edge case X is not
+  tested"). No defect is named, so the agent re-reporting them is noise by definition.
+
+The split is the editorial policy the eval encodes: *a coverage gap is not a defect*.
+
+### Results
+
+| Run | Agent version | Recall | Precision | Citation | Traces |
+|-----|---------------|--------|-----------|----------|--------|
+| 1 — baseline           | v2 | 67% | 8%  | 100% | 4/10 |
+| 2 — "improved" prompt  | v3 | 17% | 10% | 100% | 3/10 |
+| 3 — corrected prompt   | v4 | 67% | 13% | 100% | 4/10 |
+
+### What actually happened
+
+Run 2's prompt did two things at once: it banned coverage-gap reporting *and* capped
+output at three findings. The ban worked — two `must_not_flag` cases went to zero findings
+and started passing. The cap did not: the model returned exactly one finding per case, and
+usually not the expected one. Recall collapsed from 67% to 17% while precision moved only
+two points, because true positives fell almost as fast as the total.
+
+Run 3 kept the ban, dropped the cap, and named the four defect classes explicitly with an
+instruction to report every instance of each. Recall returned to baseline and precision
+finished five points above it.
+
+The useful part is run 2. It reads as an obvious improvement — more specific, more
+disciplined, less noisy — and it is a 50-point recall regression. Nothing short of running
+the set would have shown that; the prompt diff alone argues the opposite. This is the
+regression protection the pipeline exists for, demonstrated against itself rather than
+against a contrived example.
+
+Precision is low in absolute terms across all three runs because it is defined strictly
+(contract §3.3): every finding the agent produces lands in the denominator, and each case
+supplies only one expected finding. The metric is comparable between runs, which is what
+it is for; it is not an accuracy score.
+
+The agent is left on **v4**. Runs 1–3 and their prompts stay in `eval_run_batches`, so the
+comparison is reproducible from the dashboard without re-running anything.
+
+### Artifacts
+
+- `screenshots/compare-baseline-vs-improved.png` — v2 vs v4, precision +5pp. Checklist item 3.
+- `screenshots/compare-baseline-vs-regression.png` — v2 vs v3, the caught regression.
+- `screenshots/agent-dashboard-trend.png` — all three runs, the recall dip visible as a V.
+- `screenshots/agent-evals-tab.png` — the ten-case set with both expectation kinds.
+
+Still owner-only: **the narrated screencast (step 6)**. Everything it needs to show is now
+standing data — the cases exist, the three runs exist, the comparison opens from the
+dashboard.
