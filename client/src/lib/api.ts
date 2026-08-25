@@ -2,7 +2,17 @@
    All hooks build on `apiFetch`. Errors are normalized to ApiError so the
    error-UX taxonomy (toast/inline/full-screen) can branch on status. */
 
-import { PRFixtureMeta, SkillsEvalResult } from "@devdigest/shared";
+import {
+  PRFixtureMeta,
+  SkillsEvalResult,
+  EvalCase,
+  EvalBatchRecord,
+  EvalBatchDetail,
+  EvalRunComparison,
+  EvalDashboardIndex,
+  EvalDashboard,
+} from "@devdigest/shared";
+import type { EvalCaseManualInput } from "@devdigest/shared";
 
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:3001";
@@ -92,5 +102,84 @@ export const api = {
       body: JSON.stringify({ fixture_id: fixtureId }),
     });
     return SkillsEvalResult.parse(data);
+  },
+
+  // ---------------------------------------------------------------------
+  // Eval Pipeline (L06) — contract section 4.
+  // ---------------------------------------------------------------------
+
+  async getEvalCases(agentId: string): Promise<EvalCase[]> {
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-cases`);
+    return EvalCase.array().parse(data);
+  },
+
+  /** Idempotent: re-clicking the same finding returns the existing case with 200.
+   *  Not agent-scoped (v1.4 contract change): the server derives the owning
+   *  agent from finding -> review.agent_id. */
+  async createEvalCaseFromFinding(findingId: string): Promise<EvalCase> {
+    const data = await apiFetch<unknown>('/eval-cases/from-finding', {
+      method: 'POST',
+      body: JSON.stringify({ finding_id: findingId }),
+    });
+    return EvalCase.parse(data);
+  },
+
+  async createEvalCase(agentId: string, input: EvalCaseManualInput): Promise<EvalCase> {
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-cases`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return EvalCase.parse(data);
+  },
+
+  async updateEvalCase(agentId: string, caseId: string, input: EvalCaseManualInput): Promise<EvalCase> {
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-cases/${caseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+    return EvalCase.parse(data);
+  },
+
+  async deleteEvalCase(agentId: string, caseId: string): Promise<void> {
+    await apiFetch<unknown>(`/agents/${agentId}/eval-cases/${caseId}`, { method: 'DELETE' });
+  },
+
+  /** No `caseIds` (or an empty call) runs every case for the agent as one batch. */
+  async runEvalBatch(agentId: string, caseIds?: string[]): Promise<EvalBatchDetail> {
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-runs`, {
+      method: 'POST',
+      body: caseIds !== undefined ? JSON.stringify({ case_ids: caseIds }) : undefined,
+    });
+    return EvalBatchDetail.parse(data);
+  },
+
+  /** Newest-first; server default limit 20, capped at 100. */
+  async getEvalRuns(agentId: string, limit?: number): Promise<EvalBatchRecord[]> {
+    const qs = limit != null ? `?limit=${limit}` : '';
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-runs${qs}`);
+    return EvalBatchRecord.array().parse(data);
+  },
+
+  async getEvalBatch(agentId: string, batchId: string): Promise<EvalBatchDetail> {
+    const data = await apiFetch<unknown>(`/agents/${agentId}/eval-runs/${batchId}`);
+    return EvalBatchDetail.parse(data);
+  },
+
+  /** Server swaps `a`/`b` if needed so `a` is always the older run. */
+  async compareEvalRuns(agentId: string, a: string, b: string): Promise<EvalRunComparison> {
+    const data = await apiFetch<unknown>(
+      `/agents/${agentId}/eval-runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`,
+    );
+    return EvalRunComparison.parse(data);
+  },
+
+  async getEvalDashboardIndex(): Promise<EvalDashboardIndex> {
+    const data = await apiFetch<unknown>('/eval-dashboard');
+    return EvalDashboardIndex.parse(data);
+  },
+
+  async getEvalDashboard(agentId: string): Promise<EvalDashboard> {
+    const data = await apiFetch<unknown>(`/eval-dashboard/${agentId}`);
+    return EvalDashboard.parse(data);
   },
 };

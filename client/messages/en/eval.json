@@ -12,7 +12,8 @@
     "metrics": {
       "recall": "RECALL",
       "precision": "PRECISION",
-      "citationAccuracy": "CITATION ACCURACY"
+      "citationAccuracy": "CITATION ACCURACY",
+      "tracesPassed": "TRACES PASSED"
     },
     "legend": {
       "recall": "Recall",
@@ -27,6 +28,14 @@
       "pass": "Pass",
       "cost": "Cost"
     },
+    "status": {
+      "label": "Status",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed"
+    },
+    "compareSelected": "Compare selected",
+    "selectRun": "Select run to compare",
     "pass": "pass",
     "fail": "fail"
   },
@@ -49,6 +58,8 @@
     "titlePlaceholder": "Add Stripe integration",
     "bodyLabel": "Body",
     "bodyPlaceholder": "Wire up payments via Stripe SDK.",
+    "notesLabel": "Notes",
+    "notesPlaceholder": "Optional notes about this case",
     "preview": "Preview",
     "expectedOutput": "Expected output",
     "validJson": "valid JSON",
@@ -70,8 +81,11 @@
     "recallSuffix": " · recall {recall}%",
     "run": "Run",
     "running": "Running…",
+    "runAll": "Run all",
+    "runningAll": "Running all…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "viewDashboard": "View full dashboard →"
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -80,5 +94,22 @@
     "crumbEvals": "Evals",
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
+  },
+  "compare": {
+    "title": "Compare runs",
+    "promptDiffHeading": "System prompt",
+    "old": "Old",
+    "new": "New",
+    "close": "Close"
+  },
+  "index": {
+    "title": "Eval Dashboard",
+    "subtitle": "Recall, precision and citation accuracy across every agent's eval cases",
+    "agentsHeading": "Agents",
+    "recentRunsHeading": "Recent runs"
+  },
+  "expectation": {
+    "mustFind": "Must find",
+    "mustNotFlag": "Must not flag"
   }
 }
