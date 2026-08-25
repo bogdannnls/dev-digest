@@ -1,0 +1,5 @@
+baseline_rev=74f4f810661168108f22c5cfb5a3006f82ecc761
+branch=l06
+captured_at=2026-08-25
+dirty_files:
+?? docs/features/
