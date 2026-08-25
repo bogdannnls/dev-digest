@@ -302,7 +302,13 @@ export class EvalService {
           llm,
           strategy: agent.strategy ?? 'auto',
           ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
-          task: `Eval case · ${evalCase.name}`,
+          // Slugified at the point of use, not merely at creation. `task` is
+          // the ONE user-prompt section `reviewer-core/src/prompt.ts` does not
+          // pass through `wrapUntrusted` (prompt.ts:105), and a Case Editor
+          // name is free text (`EvalCaseManualInput.name` is a bare string),
+          // so an unsanitised name would land unfenced in the model's prompt.
+          // Finding-derived names are already slugs, so this is a no-op there.
+          task: `Eval case · ${slugify(evalCase.name)}`,
           sessionId: `eval:${agentId}:${batch.id}`,
         });
 
