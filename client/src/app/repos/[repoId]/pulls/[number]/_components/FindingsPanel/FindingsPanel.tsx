@@ -8,6 +8,9 @@ import { Toggle, EmptyState } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
 import { FindingCard } from "../FindingCard";
 import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useCreateEvalCaseFromFinding } from "../../../../../../../lib/hooks/eval";
+import { useToast } from "../../../../../../../lib/toast";
+import { ApiError } from "../../../../../../../lib/api";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
@@ -28,8 +31,28 @@ export function FindingsPanel({
 }) {
   const t = useTranslations("prReview");
   const action = useFindingAction();
+  const createEvalCase = useCreateEvalCaseFromFinding();
+  const toast = useToast();
   const [hideLow, setHideLow] = React.useState(false);
   const [focusIdx, setFocusIdx] = React.useState(0);
+
+  // "Turn into eval case" — a separate mutation from accept/dismiss (§5.6):
+  // it derives its expectation kind from the finding's existing decision
+  // rather than being a decision itself, so it is never routed through
+  // `useFindingAction`/`onAction`. Surfaces the server's outcome via the
+  // existing toast mechanism, including the 422 a finding whose file has no
+  // stored patch produces.
+  const handleCreateEvalCase = React.useCallback(
+    (findingId: string) => {
+      createEvalCase.mutate(findingId, {
+        onSuccess: () => toast.success(t("finding.evalCaseCreated")),
+        onError: (err) => {
+          toast.error(err instanceof ApiError ? err.message : t("finding.evalCaseError"));
+        },
+      });
+    },
+    [createEvalCase, toast, t],
+  );
 
   const filtered = React.useMemo(
     () => (severityFilter ? findings.filter((f) => f.severity === severityFilter) : findings),
@@ -75,6 +98,7 @@ export function FindingsPanel({
               repoFullName={repoFullName}
               headSha={headSha}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
+              onCreateEvalCase={() => handleCreateEvalCase(f.id)}
             />
           ))
         )}

@@ -28,6 +28,7 @@ export function FindingCard({
   focused,
   defaultExpanded,
   onAction,
+  onCreateEvalCase,
   pending,
   repoFullName,
   headSha,
@@ -36,6 +37,11 @@ export function FindingCard({
   focused?: boolean;
   defaultExpanded?: boolean;
   onAction?: (action: FindingActionKind, reply?: string) => void;
+  /** "Turn into eval case" — deliberately NOT a `FindingActionKind`/`onAction`
+   *  value: it derives its expectation kind from the accept/dismiss decision
+   *  rather than being a decision itself. Mutation lives one level up in
+   *  FindingsPanel; this component stays presentational. */
+  onCreateEvalCase?: () => void;
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
@@ -50,6 +56,11 @@ export function FindingCard({
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;
   const muted = accepted || dismissed;
+  // The expectation kind an eval case derives (must_find / must_not_flag) comes
+  // straight from this decision — an undecided finding has no kind to derive,
+  // so the action is disabled rather than guessing. The server independently
+  // 422s for the same reason; this is UX, not the guard.
+  const decided = accepted || dismissed;
 
   return (
     <div id={`finding-${f.id}`} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
@@ -108,6 +119,16 @@ export function FindingCard({
               onClick={() => onAction?.("dismiss")}
             >
               {t("finding.dismiss")}
+            </Button>
+            <Button
+              kind="ghost"
+              size="sm"
+              icon="FlaskConical"
+              disabled={!decided}
+              title={decided ? undefined : t("finding.turnIntoEvalCaseDisabled")}
+              onClick={() => onCreateEvalCase?.()}
+            >
+              {t("finding.turnIntoEvalCase")}
             </Button>
           </div>
         </div>
