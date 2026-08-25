@@ -162,6 +162,96 @@ All five ran in under 15ms each except where noted, confirming the gate does
 not run the test lanes unless the command is actually a `git commit`
 invocation.
 
+## Re-verification requested by coordinator (post-report)
+
+A QA pass flagged the same trailing-newline bug described above and asked
+for the fix to be re-verified empirically, including a case not covered by
+name in the original writeup: a **chained** command that *ends* in
+`git commit`. This section is that re-verification, run after the fix was
+already in place (the fix landed before the QA message arrived — see "A bug
+this verification caught" below) — every result here is freshly executed,
+not copied from the earlier section.
+
+**Coordinator's exact repro, re-run against the current (fixed) script:**
+```
+$ echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m test"}}' | bash .claude/hooks/pre-commit-test-gate.sh; echo $?
+exit=0   (but see timing below — exit 0 alone doesn't distinguish "caught and green" from "never caught")
+```
+Distinguishing the two requires timing, since both produce exit 0 and no
+stdout when the lanes are green:
+```
+$ time (echo '{"tool_name":"Bash","tool_input":{"command":"git commit -m test"}}' \
+    | CLAUDE_PROJECT_DIR=/Users/pandpbsa/Projects/dev-digest bash .claude/hooks/pre-commit-test-gate.sh)
+9.620s total, exit=0
+```
+9.6s of real work (both test lanes actually ran) rules out the ~16ms
+structural no-op the QA pass reproduced against the pre-fix draft.
+
+**Check 4 (new) — chained command ending in `git commit`, `bash -x` trace:**
+```
+$ echo '{"tool_name":"Bash","tool_input":{"command":"git status && git commit -m test"}}' | bash -x .claude/hooks/pre-commit-test-gate.sh
++ read -r segment
+++ printf '%s\n' 'git status && git commit -m test'
+++ sed -E 's/(&&|\|\||;|\|)/\n/g'
+...
++ grep -qE '^git[[:space:]]+commit([[:space:]]|$)'
++ IFS=
++ read -r segment
+++ printf %s ' git commit -m test'
+++ sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+...
++ grep -qE '^git[[:space:]]+commit([[:space:]]|$)'
++ is_git_commit=1
++ break
++ '[' 1 -eq 0 ']'
+```
+The trace shows the loop reads the first segment (`git status`, no match),
+then reads the second/last segment (` git commit -m test`), matches it, sets
+`is_git_commit=1`, and breaks — the exact segment the pre-fix bug dropped is
+reached and caught.
+
+**Check 4, functional — chained-ending case, red lane:**
+Recreated `server/test/scratch-hook-gate-verify.test.ts` (same failing
+assertion as check 1), ran:
+```
+$ echo '{"tool_name":"Bash","tool_input":{"command":"git status && git commit -m test"}}' \
+    | CLAUDE_PROJECT_DIR=/Users/pandpbsa/Projects/dev-digest bash .claude/hooks/pre-commit-test-gate.sh
+```
+Output:
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "Commit blocked: the server unit fast test lane is red.\nReproduce with: cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'\n\nLast output:\n- Expected\n+ Received\n\n- 2\n+ 1\n\n ❯ test/scratch-hook-gate-verify.test.ts:5:15\n ...\n Test Files  1 failed | 44 passed (45)\n      Tests  1 failed | 386 passed (387)\n   Start at  16:48:22"
+  }
+}
+```
+Scratch file deleted immediately after; `git status --porcelain` showed 0
+matches for `scratch` afterward.
+
+**Check 4, functional — chained-ending case, green lanes:**
+```
+$ time (echo '{"tool_name":"Bash","tool_input":{"command":"git status && git commit -m test"}}' \
+    | CLAUDE_PROJECT_DIR=/Users/pandpbsa/Projects/dev-digest bash .claude/hooks/pre-commit-test-gate.sh)
+8.859s total, exit=0, no stdout
+```
+
+**Checks 1–3, re-confirmed fresh (not reused from the earlier section):**
+- Check 1 (block, red lane, plain `git commit -m test`): denied, same shape
+  as check 1 above, `Start at 16:47:48`, `Duration 2.09s`, scratch file
+  removed immediately after, 0 matches remaining.
+- Check 2 (pass, green lanes, plain `git commit -m test`): `9.891s total`,
+  exit 0, no stdout.
+- Check 3 (non-commit commands untouched): `git status` — `0.018s total`,
+  exit 0, no stdout; `npm test` — `0.017s total`, exit 0, no stdout. Both
+  orders of magnitude faster than a real test-lane run, confirming neither
+  ran the lanes.
+
+Net: the fix (`printf '%s\n' "$command"` before the `sed` split, described
+below) holds for the plain-commit case, the chained-ending-in-commit case
+called out by QA, and does not regress the non-fire cases.
+
 ## A bug this verification caught
 
 The first draft split the command into segments with
