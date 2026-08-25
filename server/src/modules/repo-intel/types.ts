@@ -65,6 +65,13 @@ export interface BlastCallerRow {
   symbol: string;
   /** Which changed symbol this caller reaches. */
   viaSymbol: string;
+  /**
+   * Declaring file of the changed symbol this caller reaches (`viaSymbol`).
+   * Optional/additive — disambiguates same-named symbols declared in different
+   * files. Absent only if a producer predates this field; consumers must fall
+   * back to name-only grouping in that case.
+   */
+  viaFile?: string;
   /** 1-based line of the reference (representative; for the BlastRadius view). */
   line: number;
   /** file_rank.rank of the caller file (0 in the degraded/ripgrep path). */
@@ -82,6 +89,21 @@ export interface BlastResult {
    * Present on the persistent (non-degraded) path; absent otherwise.
    */
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
+  /**
+   * Endpoints reachable within a SECOND import hop, keyed by the 1-hop caller
+   * file they route through (a hop-2 file imports this caller file and declares
+   * these endpoints). Consumers attribute them to the same changed symbol as the
+   * 1-hop caller. Present on the persistent path only; absent on the degraded
+   * path. Additive/optional.
+   */
+  secondHopEndpointsByCallerFile?: Record<string, string[]>;
+  /**
+   * The commit the index was built at — every caller `line` is relative to THIS
+   * sha, not the PR head. Deep links to a caller `file:line` MUST pin to this sha:
+   * caller files are not in the PR's changed set, so their line numbers only line
+   * up with the indexed commit. Persistent path only (absent on the degraded path).
+   */
+  indexedSha?: string;
   degraded?: boolean;
   reason?: DegradedReason;
 }

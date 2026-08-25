@@ -101,4 +101,15 @@ export class OverviewRepository {
 
     return { reviews, findings, runCosts };
   }
+
+  /**
+   * Get the list of changed file paths for a PR.
+   */
+  async getChangedFilePaths(prId: string): Promise<string[]> {
+    const fileRows = await this.db
+      .select({ path: t.prFiles.path })
+      .from(t.prFiles)
+      .where(eq(t.prFiles.prId, prId));
+    return fileRows.map((row) => row.path);
+  }
 }

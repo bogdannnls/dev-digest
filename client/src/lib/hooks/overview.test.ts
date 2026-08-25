@@ -5,8 +5,15 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PrIntentDto, PrIntentResponse, PrWhyRiskBrief, PrWhyRiskBriefResponse } from "@devdigest/shared";
-import { useOverviewIntent, useOverviewBriefSynth } from "./overview";
+import type {
+  BlastRadius,
+  PrIntentDto,
+  PrIntentResponse,
+  PrWhyRiskBrief,
+  PrWhyRiskBriefResponse,
+} from "@devdigest/shared";
+import { useOverviewBlastRadius, useOverviewBriefSynth, useOverviewIntent } from "./overview";
+import type { PrBlastRadiusResponse } from "./overview";
 import { api, ApiError } from "../api";
 
 vi.mock("../api", async () => {
@@ -326,5 +333,44 @@ describe("useOverviewBriefSynth", () => {
     });
 
     expect(api.post).not.toHaveBeenCalled();
+  });
+});
+
+const blastRadius: BlastRadius = {
+  changed_symbols: [{ name: "restoreSession", file: "src/auth/session.ts", kind: "function" }],
+  downstream: [
+    {
+      symbol: "restoreSession",
+      callers: [{ name: "handleLogin", file: "src/auth/login.ts", line: 42 }],
+      endpoints_affected: ["/api/auth/login"],
+      crons_affected: [],
+    },
+  ],
+  summary: "Touches session restore and its single caller in the login flow.",
+};
+
+function renderBlastRadiusWithClient() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = renderHook(() => useOverviewBlastRadius("pr-1"), {
+    wrapper: ({ children }) => React.createElement(QueryClientProvider, { client: qc }, children),
+  });
+  return { ...view, qc };
+}
+
+describe("useOverviewBlastRadius", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("fetches the blast-radius envelope and returns the ready payload", async () => {
+    const ready: PrBlastRadiusResponse = { status: "ready", data: blastRadius };
+    vi.mocked(api.get).mockResolvedValue(ready as never);
+
+    const { result } = renderBlastRadiusWithClient();
+
+    expect(result.current.isPending).toBe(true);
+
+    await waitFor(() => expect(result.current.data).toEqual(ready));
+    expect(api.get).toHaveBeenCalledWith("/pulls/pr-1/overview/blast-radius");
   });
 });
