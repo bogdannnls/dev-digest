@@ -186,3 +186,60 @@ comparison is reproducible from the dashboard without re-running anything.
 Still owner-only: **the narrated screencast (step 6)**. Everything it needs to show is now
 standing data — the cases exist, the three runs exist, the comparison opens from the
 dashboard.
+
+---
+
+## Run 4 — the sensitivity test (assignment point 7)
+
+Run on 2026-08-27 against the set as it stood then: **12 cases** (8 `must_find`,
+4 `must_not_flag`) — two more than runs 1–3, so the comparable baseline is the 12-case
+v4 run, not the original 10-case one.
+
+The prompt was sabotaged deliberately, in the one direction that manufactures findings
+without breaking citations: a floor of five findings per diff, plus an explicit licence to
+report unused imports, unclear names, missing comments and hypothetical assertion
+improvements when real defects run out. Citations were still required to point at lines
+inside the diff, so the noise survives the grounding gate and lands in precision's
+denominator rather than being dropped before it counts.
+
+| Run | Version | Recall | Precision | Citation | Traces | Findings produced |
+|-----|---------|--------|-----------|----------|--------|-------------------|
+| baseline (same set) | v4 | 63% | 16% | 100% | 5/12 | 31 |
+| sabotaged           | v5 | 88% | **6%**  | 100% | 7/12 | **111** |
+
+### What the numbers say
+
+Findings tripled, 31 → 111. True positives went 5 → 7. Precision is `TP / all findings`,
+so the 80 extra findings entered the denominator and contributed two to the numerator:
+16% → 6%.
+
+Recall went **up**, not down, and that is the more instructive half. Spraying findings
+across every diff hits more `must_find` targets by accident — 5/8 became 7/8. An agent
+optimised for recall alone would score this prompt as an improvement. Only precision
+exposes it, which is exactly why the assignment asks for both and why the dismissed
+findings earn their place in the set.
+
+`must_not_flag` stayed 0/4 in both runs. Those cases fail because this agent reports
+something in those line ranges under either prompt; the sabotage did not make them worse
+because they had nothing left to lose.
+
+Citation accuracy stayed at 100%: the manufactured findings cited real lines. That is the
+intended shape of the test — it isolates precision instead of confounding it with
+grounding failures.
+
+The good prompt was restored immediately afterwards (agent v6, byte-identical to v4).
+Runs 1–5 and their prompts remain in `eval_run_batches`, so the whole story replays from
+the dashboard without re-running anything.
+
+Screenshot: `screenshots/compare-good-vs-noisy.png`.
+
+### Two things visible in that screenshot worth knowing before recording
+
+The regression banner at the top reads *"recall dropped by 0.13; precision dropped by
+0.27"*, which matches neither column in the modal. It compares the newest batch against
+the immediately preceding one — and that predecessor is a single-case run, a different
+denominator entirely. The modal's `-10%` is the honest 12-case comparison; the banner is
+comparing across case sets.
+
+The comparison modal itself reports **Recall +25% / Precision -10%**, since it orders the
+older run as `a`.
