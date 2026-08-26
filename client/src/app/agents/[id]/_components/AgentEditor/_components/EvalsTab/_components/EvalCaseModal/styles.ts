@@ -38,10 +38,31 @@ export const s = {
     hunk: { padding: "0 8px", color: "var(--text-muted)" } as CSSProperties,
     context: { padding: "0 8px", color: "var(--text-secondary)" } as CSSProperties,
   },
+  /** Two rows, not one. The line-number fields are `<input type="number">`,
+   *  whose min-content width in Chrome is ~168px once the spinner is counted —
+   *  in a 90px track the grid item could not shrink to fit (grid items default
+   *  to `min-width: auto`) and pushed the whole modal ~80px wider than its own
+   *  body, which is what produced the horizontal scrollbar. The input lives in
+   *  `vendor/ui`, so it cannot be given `min-width: 0` directly; giving the
+   *  fields a track wider than their intrinsic minimum solves it from here.
+   *  `minmax(0, …)` keeps the tracks shrinkable if the modal ever narrows. */
   expectationGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 2fr 90px 90px",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 2fr)",
     gap: 8,
+  } satisfies CSSProperties,
+  lineGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: 8,
+    marginTop: 8,
+  } satisfies CSSProperties,
+  lineLabel: {
+    display: "block",
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+    marginBottom: 4,
   } satisfies CSSProperties,
   error: { color: "var(--crit)", fontSize: 12, marginTop: 6 } satisfies CSSProperties,
 } as const;

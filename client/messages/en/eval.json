@@ -62,11 +62,14 @@
     "notesPlaceholder": "Optional notes about this case",
     "preview": "Preview",
     "expectedOutput": "Expected output",
+    "startLineLabel": "Start line",
+    "endLineLabel": "End line",
     "validJson": "valid JSON",
     "invalidJson": "invalid JSON",
     "lastRunPassed": "Last run passed",
     "lastRunFailed": "Last run failed",
-    "resultSummary": "precision {precision}% · citation {citation}% · {duration}s"
+    "resultSummary": "precision {precision}% · citation {citation}% · {duration}s",
+    "noFindings": "no findings produced · {duration}s"
   },
   "evalsTab": {
     "metricsTitle": "Eval metrics",
@@ -78,13 +81,13 @@
     "neverRun": "never run",
     "passed": "passed",
     "failed": "failed",
-    "recallSuffix": " · recall {recall}%",
     "run": "Run",
     "running": "Running…",
     "runAll": "Run all",
     "runningAll": "Running all…",
     "edit": "Edit",
     "delete": "Delete",
+    "noPlottableMetrics": "These runs produced no findings, so there is nothing to plot yet.",
     "viewDashboard": "View full dashboard →"
   },
   "page": {

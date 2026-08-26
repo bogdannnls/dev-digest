@@ -141,7 +141,16 @@ export function EvalsTab({ agent }: { agent: Agent }) {
 
       <div>
         <h3 style={s.sectionTitle}>{t("dashboard.metricTrend")}</h3>
-        <EvalTrendChart trend={trend} />
+        {/* `toTrend` drops any batch missing one of the three metrics, so an
+            agent whose runs all produced zero findings yields an empty series
+            while the runs table right above lists them. The chart's own empty
+            state says "no runs yet", which is then simply false — distinguish
+            "nothing ran" from "nothing plottable" before handing off. */}
+        {trend.length === 0 && (runs.data?.length ?? 0) > 0 ? (
+          <div style={s.trendUnplottable}>{t("evalsTab.noPlottableMetrics")}</div>
+        ) : (
+          <EvalTrendChart trend={trend} />
+        )}
       </div>
 
       {modalTarget !== null && (

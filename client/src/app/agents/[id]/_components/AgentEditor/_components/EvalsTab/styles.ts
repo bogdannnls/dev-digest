@@ -2,6 +2,14 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for EvalsTab. */
 export const s = {
+  trendUnplottable: {
+    border: "1px dashed var(--border)",
+    borderRadius: 8,
+    padding: "24px 12px",
+    textAlign: "center",
+    color: "var(--text-secondary)",
+    fontSize: 13,
+  } satisfies CSSProperties,
   wrap: { display: "flex", flexDirection: "column", gap: 24, maxWidth: 960 } satisfies CSSProperties,
   metricsHeader: {
     display: "flex",

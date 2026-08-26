@@ -37,7 +37,8 @@ export function EvalCaseRow({ evalCase, lastRun, isRunning, onRun, onEdit, onDel
   // recall is only shown when the run recorded a number (contract §3.4 — a
   // `must_not_flag` case has no recall denominator and stays `null`, so the
   // suffix is omitted rather than coerced to 0%).
-  const recallPct = lastRun?.recall != null ? Math.round(lastRun.recall * 100) : null;
+  // No recall suffix: per-case recall is null by construction (its denominator
+  // is the case's lone expectation), so this branch could only ever be false.
 
   return (
     <div style={s.row}>
@@ -56,7 +57,6 @@ export function EvalCaseRow({ evalCase, lastRun, isRunning, onRun, onEdit, onDel
           </span>
           <span style={lastRun?.pass ? s.resultPass : lastRun ? s.resultFail : s.resultNone}>
             {resultText}
-            {recallPct != null && t("evalsTab.recallSuffix", { recall: recallPct })}
           </span>
         </div>
       </div>
