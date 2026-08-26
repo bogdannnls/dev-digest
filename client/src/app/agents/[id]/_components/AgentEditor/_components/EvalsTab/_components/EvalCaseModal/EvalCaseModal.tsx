@@ -90,7 +90,9 @@ export function EvalCaseModal({ agentId, evalCase, lastRun, onClose }: EvalCaseM
     runOne.mutate([evalCase.id]);
   }
 
-  const recallDisp = lastRun?.recall != null ? String(Math.round(lastRun.recall * 100)) : EM_DASH;
+  // No recall here: it is batch-level only. A single case's recall denominator
+  // is its own lone expectation, so the value would restate `pass` for
+  // `must_find` and be permanently blank for `must_not_flag`.
   const precisionDisp = lastRun?.precision != null ? String(Math.round(lastRun.precision * 100)) : EM_DASH;
   const citationDisp = lastRun?.citation_accuracy != null ? String(Math.round(lastRun.citation_accuracy * 100)) : EM_DASH;
   const durationDisp = lastRun?.duration_ms != null ? (lastRun.duration_ms / 1000).toFixed(1) : EM_DASH;
@@ -128,7 +130,6 @@ export function EvalCaseModal({ agentId, evalCase, lastRun, onClose }: EvalCaseM
             <div>{lastRun.pass ? t("caseEditor.lastRunPassed") : t("caseEditor.lastRunFailed")}</div>
             <div style={s.lastRunSummary}>
               {t("caseEditor.resultSummary", {
-                recall: recallDisp,
                 precision: precisionDisp,
                 citation: citationDisp,
                 duration: durationDisp,

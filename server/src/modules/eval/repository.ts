@@ -67,6 +67,11 @@ export interface InsertEvalRun {
   batchId: string;
   actualOutput: unknown;
   pass: boolean;
+  /** Null only when the case produced no findings at all — a vacuous
+   *  denominator, not a score of zero. `recall` has no per-case column value
+   *  by design; see the comment in `service.runBatch`. */
+  precision: number | null;
+  citationAccuracy: number | null;
   durationMs: number;
   costUsd: number | null;
 }
@@ -383,6 +388,8 @@ export class EvalRepository {
         batchId: values.batchId,
         actualOutput: values.actualOutput,
         pass: values.pass,
+        precision: values.precision,
+        citationAccuracy: values.citationAccuracy,
         durationMs: values.durationMs,
         costUsd: values.costUsd,
       })

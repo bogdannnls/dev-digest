@@ -516,6 +516,66 @@ d('eval routes (contract §4)', () => {
       expect(new Set(runRows.map((r) => r.caseId))).toEqual(new Set([caseA.id, caseB.id, caseC.id]));
     });
 
+    it('scores precision and citation_accuracy PER CASE, leaving per-case recall null', async () => {
+      // Regression guard. These three columns exist on `eval_runs` and the
+      // case-editor modal renders them; before this was scored, every run row
+      // held NULL for all three and the modal showed three permanent
+      // em-dashes for passing and failing cases alike.
+      const { db } = pg.handle;
+      const agent = await makeAgent(db, workspaceId);
+
+      // Same three shapes as the batch test above, chosen because between them
+      // they cover every branch of a per-case ratio: a real one, a zero with a
+      // denominator, and both flavours of vacuous null.
+      const caseA = await insertCase(db, workspaceId, agent.id, {
+        name: 'case-a', diff: diffText('src/a.ts', 9), kind: 'must_find', file: 'src/a.ts', startLine: 10, endLine: 10,
+      });
+      const caseB = await insertCase(db, workspaceId, agent.id, {
+        name: 'case-b', diff: diffText('src/b.ts', 9), kind: 'must_find', file: 'src/b.ts', startLine: 10, endLine: 10,
+      });
+      const caseC = await insertCase(db, workspaceId, agent.id, {
+        name: 'case-c', diff: diffText('src/c.ts', 9), kind: 'must_not_flag', file: 'src/c.ts', startLine: 10, endLine: 10,
+      });
+
+      const { res } = await runBatch(db, agent.id, {
+        'case-a': mockReview([
+          { id: 'fa1', file: 'src/a.ts', start_line: 10, end_line: 10 },
+          { id: 'fa2', file: 'src/a.ts', start_line: 11, end_line: 11 },
+        ]),
+        'case-b': mockReview([{ id: 'fb1', file: 'src/b.ts', start_line: 999, end_line: 999 }]),
+        'case-c': mockReview([]),
+      });
+      expect(res.statusCode).toBe(201);
+
+      const byId = new Map(res.json().cases.map((c: any) => [c.case_id, c]));
+
+      // case-a: 2 kept findings, 1 of them the TP → precision 1/2;
+      //         nothing dropped → citation 2/2.
+      expect(byId.get(caseA.id).precision).toBe(0.5);
+      expect(byId.get(caseA.id).citation_accuracy).toBe(1);
+
+      // case-b: its only finding was dropped by grounding → no findings left,
+      //         so precision has no denominator; citation DOES have one and is
+      //         a true zero (0 kept of 1 offered). The two must not collapse.
+      expect(byId.get(caseB.id).precision).toBeNull();
+      expect(byId.get(caseB.id).citation_accuracy).toBe(0);
+
+      // case-c: the provider reported nothing at all → both denominators empty.
+      expect(byId.get(caseC.id).precision).toBeNull();
+      expect(byId.get(caseC.id).citation_accuracy).toBeNull();
+
+      // recall stays null on every row: a single case's denominator is its own
+      // lone expectation, so the value would only restate `pass`.
+      for (const id of [caseA.id, caseB.id, caseC.id]) {
+        expect(byId.get(id).recall).toBeNull();
+      }
+
+      // and the same values are what actually landed in the table
+      const rows = await db.select().from(t.evalRuns).where(eq(t.evalRuns.batchId, res.json().batch.id));
+      expect(rows.find((r) => r.caseId === caseA.id)!.precision).toBe(0.5);
+      expect(rows.every((r) => r.recall === null)).toBe(true);
+    });
+
     it('case_ids restricts the batch to exactly that subset', async () => {
       const { db } = pg.handle;
       const agent = await makeAgent(db, workspaceId);

@@ -41,9 +41,17 @@ export function toEvalBatchRecordDto(row: EvalRunBatchRow): EvalBatchRecord {
   };
 }
 
-/** DB row (+ joined case name) → wire `EvalRunRecord` (§2.5). `recall`/`precision`/
- *  `citation_accuracy` stay null on every per-case row — those ratios are
- *  batch-level only (§3.3); a single case has no denominator to divide by. */
+/** DB row (+ joined case name) → wire `EvalRunRecord` (§2.5).
+ *
+ *  `precision` and `citation_accuracy` ARE per-case: their denominators are the
+ *  findings that case produced and the citations that case's findings offered,
+ *  both of which exist for a single case. They are null only when those
+ *  denominators are empty. `recall` is the one that stays null on every row —
+ *  its per-case denominator is the case's lone expectation, making it 0/1 for
+ *  `must_find` (already carried by `pass`) and undefined for `must_not_flag`.
+ *
+ *  Supersedes the earlier rule that all three were batch-level: it left the
+ *  case-editor modal rendering three permanent em-dashes. */
 export function toEvalRunRecordDto(row: EvalRunRow & { caseName: string | null }): EvalRunRecord {
   return {
     id: row.id,

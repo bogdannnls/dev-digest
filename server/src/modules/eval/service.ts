@@ -339,18 +339,37 @@ export class EvalService {
     let hasCost = false;
     const scoreInputs: EvalCaseScoreInput[] = [];
 
+    // Per-case `precision` / `citation_accuracy` are scored by running the
+    // batch scorer over a one-element set. Reusing `scoreBatch` rather than
+    // adding a per-case metric API keeps one definition of each ratio: a
+    // case's row and the batch it belongs to can never disagree.
+    //
+    // `recall` deliberately stays null on the row. Its per-case denominator is
+    // the case's own single expectation, so it degenerates to 0/1 for
+    // `must_find` — already carried by `pass` — and is undefined for
+    // `must_not_flag`. Writing it would add a column that is either redundant
+    // or permanently blank.
     for (const replay of replays) {
       if (replay.errorMessage) {
         const failed: FailedActualOutput = { error: replay.errorMessage };
+        const input: EvalCaseScoreInput = {
+          expectation: replay.expectation,
+          findings: [],
+          kept: 0,
+          dropped: 0,
+        };
+        const single = scoreBatch([input]);
         await this.repo.insertRun({
           caseId: replay.caseId,
           batchId: batch.id,
           actualOutput: failed,
           pass: false,
+          precision: single.precision,
+          citationAccuracy: single.citation_accuracy,
           durationMs: replay.durationMs,
           costUsd: null,
         });
-        scoreInputs.push({ expectation: replay.expectation, findings: [], kept: 0, dropped: 0 });
+        scoreInputs.push(input);
         continue;
       }
 
@@ -370,20 +389,24 @@ export class EvalService {
         grounding: outcome.grounding,
         matched_finding_id: caseScore.matchedFindingId,
       };
+      const input: EvalCaseScoreInput = {
+        expectation: replay.expectation,
+        findings: outcome.review.findings,
+        kept: outcome.review.findings.length,
+        dropped: outcome.dropped.length,
+      };
+      const single = scoreBatch([input]);
       await this.repo.insertRun({
         caseId: replay.caseId,
         batchId: batch.id,
         actualOutput: completed,
         pass: caseScore.pass,
+        precision: single.precision,
+        citationAccuracy: single.citation_accuracy,
         durationMs: replay.durationMs,
         costUsd: outcome.costUsd,
       });
-      scoreInputs.push({
-        expectation: replay.expectation,
-        findings: outcome.review.findings,
-        kept: outcome.review.findings.length,
-        dropped: outcome.dropped.length,
-      });
+      scoreInputs.push(input);
     }
 
     const batchScore = scoreBatch(scoreInputs);
