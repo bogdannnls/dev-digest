@@ -12,7 +12,8 @@
     "metrics": {
       "recall": "RECALL",
       "precision": "PRECISION",
-      "citationAccuracy": "CITATION ACCURACY"
+      "citationAccuracy": "CITATION ACCURACY",
+      "tracesPassed": "TRACES PASSED"
     },
     "legend": {
       "recall": "Recall",
@@ -27,6 +28,14 @@
       "pass": "Pass",
       "cost": "Cost"
     },
+    "status": {
+      "label": "Status",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed"
+    },
+    "compareSelected": "Compare selected",
+    "selectRun": "Select run to compare",
     "pass": "pass",
     "fail": "fail"
   },
@@ -49,13 +58,18 @@
     "titlePlaceholder": "Add Stripe integration",
     "bodyLabel": "Body",
     "bodyPlaceholder": "Wire up payments via Stripe SDK.",
+    "notesLabel": "Notes",
+    "notesPlaceholder": "Optional notes about this case",
     "preview": "Preview",
     "expectedOutput": "Expected output",
+    "startLineLabel": "Start line",
+    "endLineLabel": "End line",
     "validJson": "valid JSON",
     "invalidJson": "invalid JSON",
     "lastRunPassed": "Last run passed",
     "lastRunFailed": "Last run failed",
-    "resultSummary": "recall {recall}% · precision {precision}% · citation {citation}% · {duration}s"
+    "resultSummary": "precision {precision}% · citation {citation}% · {duration}s",
+    "noFindings": "no findings produced · {duration}s"
   },
   "evalsTab": {
     "metricsTitle": "Eval metrics",
@@ -67,11 +81,14 @@
     "neverRun": "never run",
     "passed": "passed",
     "failed": "failed",
-    "recallSuffix": " · recall {recall}%",
     "run": "Run",
     "running": "Running…",
+    "runAll": "Run all",
+    "runningAll": "Running all…",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "noPlottableMetrics": "These runs produced no findings, so there is nothing to plot yet.",
+    "viewDashboard": "View full dashboard →"
   },
   "page": {
     "crumbSkillsLab": "Skills Lab",
@@ -80,5 +97,22 @@
     "crumbEvals": "Evals",
     "crumbNewCase": "New case",
     "crumbEvalCase": "Eval case"
+  },
+  "compare": {
+    "title": "Compare runs",
+    "promptDiffHeading": "System prompt",
+    "old": "Old",
+    "new": "New",
+    "close": "Close"
+  },
+  "index": {
+    "title": "Eval Dashboard",
+    "subtitle": "Recall, precision and citation accuracy across every agent's eval cases",
+    "agentsHeading": "Agents",
+    "recentRunsHeading": "Recent runs"
+  },
+  "expectation": {
+    "mustFind": "Must find",
+    "mustNotFlag": "Must not flag"
   }
 }

@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type { UnifiedDiff } from '@devdigest/shared';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
+import { assembleDiffFragment } from '../_shared/diff-fragment.js';
 import * as schema from '../../db/schema.js';
 import type { ReviewRepository, PullRow } from './repository.js';
 
@@ -32,13 +33,5 @@ export async function loadDiff(
 /** Reconstruct a UnifiedDiff from persisted pr_files patches. */
 export async function diffFromPrFiles(repo: ReviewRepository, prId: string): Promise<UnifiedDiff> {
   const files = await repo.getPrFiles(prId);
-  const parts: string[] = [];
-  for (const f of files) {
-    if (!f.patch) continue;
-    parts.push(`diff --git a/${f.path} b/${f.path}`);
-    parts.push(`--- a/${f.path}`);
-    parts.push(`+++ b/${f.path}`);
-    parts.push(f.patch);
-  }
-  return parseUnifiedDiff(parts.join('\n'));
+  return parseUnifiedDiff(assembleDiffFragment(files));
 }
