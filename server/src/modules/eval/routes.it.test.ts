@@ -547,27 +547,37 @@ d('eval routes (contract §4)', () => {
       });
       expect(res.statusCode).toBe(201);
 
-      const byId = new Map(res.json().cases.map((c: any) => [c.case_id, c]));
+      type CaseRow = { precision: number | null; citation_accuracy: number | null; recall: number | null };
+      const byId = new Map<string, CaseRow>(
+        (res.json().cases as ({ case_id: string } & CaseRow)[]).map((c) => [c.case_id, c]),
+      );
+      // Missing row is a failure in its own right, not an `undefined` that
+      // silently makes the metric assertions below vacuous.
+      const scored = (id: string): CaseRow => {
+        const row = byId.get(id);
+        if (!row) throw new Error(`batch has no run row for case ${id}`);
+        return row;
+      };
 
       // case-a: 2 kept findings, 1 of them the TP → precision 1/2;
       //         nothing dropped → citation 2/2.
-      expect(byId.get(caseA.id).precision).toBe(0.5);
-      expect(byId.get(caseA.id).citation_accuracy).toBe(1);
+      expect(scored(caseA.id).precision).toBe(0.5);
+      expect(scored(caseA.id).citation_accuracy).toBe(1);
 
       // case-b: its only finding was dropped by grounding → no findings left,
       //         so precision has no denominator; citation DOES have one and is
       //         a true zero (0 kept of 1 offered). The two must not collapse.
-      expect(byId.get(caseB.id).precision).toBeNull();
-      expect(byId.get(caseB.id).citation_accuracy).toBe(0);
+      expect(scored(caseB.id).precision).toBeNull();
+      expect(scored(caseB.id).citation_accuracy).toBe(0);
 
       // case-c: the provider reported nothing at all → both denominators empty.
-      expect(byId.get(caseC.id).precision).toBeNull();
-      expect(byId.get(caseC.id).citation_accuracy).toBeNull();
+      expect(scored(caseC.id).precision).toBeNull();
+      expect(scored(caseC.id).citation_accuracy).toBeNull();
 
       // recall stays null on every row: a single case's denominator is its own
       // lone expectation, so the value would only restate `pass`.
       for (const id of [caseA.id, caseB.id, caseC.id]) {
-        expect(byId.get(id).recall).toBeNull();
+        expect(scored(id).recall).toBeNull();
       }
 
       // and the same values are what actually landed in the table

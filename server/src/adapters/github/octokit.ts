@@ -78,12 +78,31 @@ export class OctokitGitHubClient implements ForgeClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: n,
-            per_page: 100,
-          });
+          // Paginated, not a single page. `per_page: 100` is this endpoint's
+          // maximum, so a PR with more changed files than that used to be
+          // stored truncated at exactly 100 rows while `files_count` (taken
+          // from the PR object below) reported the real total. Nothing
+          // surfaced the gap: reviews read the diff from the local clone via
+          // `loadDiff`, so they legitimately produced findings on files that
+          // were never persisted — and anything reading `pr_files` instead,
+          // such as deriving an eval case from one of those findings, failed
+          // with "no stored patch". GitHub caps this endpoint at 3000 files.
+          const files: Awaited<ReturnType<typeof this.octokit.rest.pulls.listFiles>>['data'] = [];
+          // 30 pages x 100 = GitHub's 3000-file ceiling for this endpoint.
+          // Looped explicitly rather than via `octokit.paginate`, which needs a
+          // route carrying `.endpoint` and so cannot be driven by a plain
+          // stubbed function in the adapter's tests.
+          for (let page = 1; page <= 30; page += 1) {
+            const { data } = await this.octokit.rest.pulls.listFiles({
+              owner: repo.owner,
+              repo: repo.name,
+              pull_number: n,
+              per_page: 100,
+              page,
+            });
+            files.push(...data);
+            if (data.length < 100) break;
+          }
           const { data: commits } = await this.octokit.rest.pulls.listCommits({
             owner: repo.owner,
             repo: repo.name,

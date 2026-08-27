@@ -105,3 +105,84 @@ describe('OctokitGitHubClient — private resolveLinkedIssue (single first-match
     expect(detail.linked_issue?.number).toBe(5);
   });
 });
+
+describe('OctokitGitHubClient — getPullRequest file pagination', () => {
+  it('follows pages past 100 files instead of storing a truncated first page', async () => {
+    // Regression guard. `listFiles` maxes out at per_page: 100, and a single
+    // un-paginated call silently persisted exactly 100 rows for PRs with more
+    // changed files than that — while `files_count`, read off the PR object,
+    // reported the true total. Nothing failed loudly: reviews read the diff
+    // from the local clone, so findings landed on files that were never
+    // stored, and only a later `pr_files` lookup surfaced the gap.
+    const client = new OctokitGitHubClient('fake-token');
+    const octokit = (client as unknown as { octokit: unknown }).octokit as {
+      rest: {
+        pulls: {
+          get: () => Promise<{ data: Record<string, unknown> }>;
+          listFiles: (a: { page?: number }) => Promise<{ data: unknown[] }>;
+          listCommits: () => Promise<{ data: unknown[] }>;
+        };
+        issues: { get: (args: { issue_number: number }) => Promise<{ data: Record<string, unknown> }> };
+      };
+    };
+
+    octokit.rest.pulls.get = async () => ({
+      data: {
+        number: 1, title: 'Big PR', user: { login: 'dev' },
+        head: { ref: 'feature', sha: 'abc' }, base: { ref: 'main' },
+        additions: 1, deletions: 1, changed_files: 143, state: 'open', merged_at: null,
+        created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', body: '',
+      },
+    });
+    octokit.rest.pulls.listCommits = async () => ({ data: [] });
+
+    // 143 files across two pages: a full 100, then a short 43 that ends it.
+    const pagesRequested: number[] = [];
+    const file = (i: number) => ({ filename: `src/file-${i}.ts`, status: 'modified', additions: 1, deletions: 0, patch: '@@ -1 +1 @@' });
+    octokit.rest.pulls.listFiles = async ({ page }) => {
+      pagesRequested.push(page ?? 1);
+      if (page === 1) return { data: Array.from({ length: 100 }, (_, i) => file(i)) };
+      if (page === 2) return { data: Array.from({ length: 43 }, (_, i) => file(100 + i)) };
+      return { data: [] };
+    };
+
+    const detail = await client.getPullRequest(REPO, 1);
+
+    expect(pagesRequested).toEqual([1, 2]);
+    expect(detail.files).toHaveLength(143);
+    // The last file only exists beyond the first page — the exact class of
+    // path that used to be missing from pr_files.
+    expect(detail.files.at(-1)?.path).toBe('src/file-142.ts');
+  });
+
+  it('stops after one request when the first page is already short', async () => {
+    // The loop must not fire a second, pointless request for a small PR.
+    const client = new OctokitGitHubClient('fake-token');
+    const octokit = (client as unknown as { octokit: unknown }).octokit as {
+      rest: {
+        pulls: {
+          get: () => Promise<{ data: Record<string, unknown> }>;
+          listFiles: (a: { page?: number }) => Promise<{ data: unknown[] }>;
+          listCommits: () => Promise<{ data: unknown[] }>;
+        };
+      };
+    };
+    octokit.rest.pulls.get = async () => ({
+      data: {
+        number: 2, title: 'Small PR', user: { login: 'dev' },
+        head: { ref: 'f', sha: 'abc' }, base: { ref: 'main' },
+        additions: 1, deletions: 1, changed_files: 3, state: 'open', merged_at: null,
+        created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-02T00:00:00Z', body: '',
+      },
+    });
+    octokit.rest.pulls.listCommits = async () => ({ data: [] });
+    let calls = 0;
+    octokit.rest.pulls.listFiles = async () => {
+      calls += 1;
+      return { data: [{ filename: 'a.ts', status: 'modified', additions: 1, deletions: 0, patch: '@@' }] };
+    };
+
+    await client.getPullRequest(REPO, 2);
+    expect(calls).toBe(1);
+  });
+});
