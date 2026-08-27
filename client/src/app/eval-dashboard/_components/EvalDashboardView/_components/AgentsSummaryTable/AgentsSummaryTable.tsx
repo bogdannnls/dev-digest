@@ -77,7 +77,13 @@ function MetricCell({ value, trend, color }: { value: number | null; trend: numb
   return (
     <span role="cell" style={s.metricCell}>
       <span>{formatPercent(value)}</span>
-      <Sparkline data={trend} color={color} w={44} h={18} />
+      {/* Two points minimum. `Sparkline` spaces its x coordinates as
+          `i / (data.length - 1)`, so a single-run agent divides zero by zero
+          and every coordinate becomes NaN — React then warns "Received NaN for
+          the `cx` attribute" and the dot renders nowhere. The component is in
+          `vendor/ui`, so the guard belongs here. One point is not a trend
+          anyway; the percentage beside it already says everything there is. */}
+      {trend.length > 1 && <Sparkline data={trend} color={color} w={44} h={18} />}
     </span>
   );
 }
